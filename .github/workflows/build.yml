@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Check out the recipe
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build on the glibc floor
         run: |
@@ -94,7 +94,7 @@ jobs:
           sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: asterisk-server-linux-${{ matrix.arch }}
           path: |
@@ -116,7 +116,7 @@ jobs:
 
     steps:
       - name: Check out the recipe
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build
         run: |
@@ -131,7 +131,7 @@ jobs:
           shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: asterisk-server-darwin-${{ matrix.arch }}
           path: |
@@ -158,10 +158,10 @@ jobs:
 
     steps:
       - name: Check out the recipe
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download the built archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: asterisk-server-darwin-${{ matrix.arch }}
 
@@ -181,7 +181,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           merge-multiple: true
 
@@ -204,9 +204,10 @@ jobs:
             Not covered: Linux with glibc older than 2.34, musl (Alpine). Asterisk does not exist for Windows; under Windows it runs inside WSL 2.
 
             ## Source
-            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build makes two edits to build files and no edit to C code. `BUILD-INFO.txt` inside each archive records the source checksum, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
+            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build makes two edits to build files, adds one compiler definition, and edits no C code. `BUILD-INFO.txt` inside each archive records the source checksum, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
 
             ## License
             GNU General Public License v2.0 — the license of Asterisk.
           files: |
             asterisk-server-linux-*
+            asterisk-server-darwin-*

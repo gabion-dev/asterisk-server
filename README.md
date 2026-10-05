@@ -205,8 +205,8 @@ that build the address from the name and the tag — do not rename them.
 
 Built from the release tarballs published at
 [downloads.asterisk.org](https://downloads.asterisk.org/pub/telephony/asterisk/releases/):
-unmodified on Linux, with two edits to build files on macOS (described
-above). The complete corresponding source of a release is that tarball plus the
+unmodified on Linux; on macOS with two edits to build files and one added
+compiler definition (described above). The complete corresponding source of a release is that tarball plus the
 recipe of this repository at the release tag; `BUILD-INFO.txt` names the
 tarball, its checksum and any edit.
 
