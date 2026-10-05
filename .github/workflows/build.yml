@@ -183,7 +183,7 @@ jobs:
 
   release:
     needs: [build-linux, verify-macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ github.event.inputs.asterisk_version }}-r${{ github.event.inputs.revision }}
 
@@ -194,7 +194,7 @@ jobs:
           merge-multiple: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Asterisk ${{ github.event.inputs.asterisk_version }} (recipe revision ${{ github.event.inputs.revision }})
