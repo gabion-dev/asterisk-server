@@ -197,8 +197,35 @@ done < <(required_modules)
 menuselect/menuselect "${MENUSELECT_ARGS[@]}" menuselect.makeopts
 
 echo "=== Compile ==="
-make -j"${CPUS}"
-make install DESTDIR="${STAGE}"
+# Two compiler flags, given to every compilation of Asterisk on macOS:
+#
+# -DTCP_KEEPIDLE=TCP_KEEPALIVE
+#   The option that sets how long a TCP connection may stay idle before
+#   keepalive probes start is called TCP_KEEPIDLE on Linux and TCP_KEEPALIVE
+#   on macOS; the meaning is the same. Asterisk already maps one to the other
+#   in its SIP transport code, but its WebSocket client uses the Linux name
+#   without that mapping and does not compile. The definition supplies the
+#   mapping for the whole build — a flag, so that no C file is edited.
+#
+# -Wno-macro-redefined
+#   Asterisk redefines strlcat and strlcpy on purpose, to stop its own code
+#   from calling them, and macOS headers define them as macros. The warning
+#   repeats in every file and buries real errors in the log.
+ASTERISK_MACOS_CFLAGS="-DTCP_KEEPIDLE=TCP_KEEPALIVE -Wno-macro-redefined"
+
+# The compilation keeps going after an error (-k) and its output is kept in a
+# file: when it fails, every error of the run is printed together, instead
+# of only the first one that happened to stop a parallel build.
+if ! make -k -j"${CPUS}" ASTCFLAGS="${ASTERISK_MACOS_CFLAGS}" \
+  > "${WORK}/make.log" 2>&1; then
+  echo "=== Compilation failed. Every error of this run: ===" >&2
+  grep -nE -B2 -A6 'error:|^ld: |Undefined symbols' "${WORK}/make.log" >&2 || true
+  echo "=== Last lines of the build output: ===" >&2
+  tail -n 40 "${WORK}/make.log" >&2
+  exit 1
+fi
+tail -n 5 "${WORK}/make.log"
+make install DESTDIR="${STAGE}" ASTCFLAGS="${ASTERISK_MACOS_CFLAGS}"
 
 echo "=== Assemble the tree ==="
 rm -rf "${TREE}"
@@ -302,6 +329,7 @@ cp "${WORK}/libsrtp-${LIBSRTP_VERSION}/LICENSE" "${TREE}/LICENSES/bundled/libsrt
   echo "source-edits:"
   echo "  - Makefile, main/Makefile: -mmacosx-version-min=10.6 replaced with ${MACOSX_DEPLOYMENT_TARGET}"
   echo "  - main/Makefile: literal '${PJ_TARGET_LITERAL}' replaced with 'PJ_TARGET := \$(TARGET_NAME)'"
+  echo "compiler-flags-added: ${ASTERISK_MACOS_CFLAGS}"
   echo "openssl-version: ${OPENSSL_VERSION}"
   echo "libsrtp-version: ${LIBSRTP_VERSION} (OpenSSL backend)"
   echo "built-on: macOS $(sw_vers -productVersion)"

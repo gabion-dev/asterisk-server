@@ -146,6 +146,11 @@ boots Asterisk from the tree, and checks the loaded modules.
 
    Each edit stops the build if the text it expects is no longer there.
 
+   One compiler definition is added as well, `-DTCP_KEEPIDLE=TCP_KEEPALIVE`:
+   the same TCP option has one name on Linux and another on macOS, and
+   Asterisk's WebSocket client uses the Linux name without the mapping that
+   its SIP transport code already has.
+
 3. The tree is made self-locating: every reference to a bundled library is
    rewritten to be relative to the executable, the build stops if any binary
    still references a path outside the tree and macOS, and every binary is
