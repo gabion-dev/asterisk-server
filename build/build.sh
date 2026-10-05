@@ -93,19 +93,30 @@ echo "=== Configure ==="
 
 echo "=== Module selection ==="
 make menuselect.makeopts
-# BUILD_NATIVE tunes the code for the CPU of the build machine; the result
-# would crash with an illegal instruction on an older CPU. Sound packs and
-# music are not shipped: prompts come from the application.
-MENUSELECT_ARGS=(
-  --disable BUILD_NATIVE
-  --disable-category MENUSELECT_CORE_SOUNDS
-  --disable-category MENUSELECT_EXTRA_SOUNDS
-  --disable-category MENUSELECT_MOH
-  --disable-category MENUSELECT_ADDONS
-)
+# Only the required modules are built, together with whatever they depend on
+# (menuselect enables the dependencies of a module it is told to enable).
+# Building everything that happens to compile would put unused code on a
+# node that faces the network, and on macOS it would also make the build
+# hostage to modules nobody maintains for that platform.
+#
+# So: every module category is switched off, then the required list is
+# switched on. BUILD_NATIVE tunes the code for the CPU of the build machine
+# and would crash on an older one. Sound packs and music are not shipped:
+# prompts come from the application.
+MENUSELECT_ARGS=(--disable BUILD_NATIVE)
+for category in \
+  MENUSELECT_ADDONS MENUSELECT_APPS MENUSELECT_BRIDGES MENUSELECT_CDR \
+  MENUSELECT_CEL MENUSELECT_CHANNELS MENUSELECT_CODECS MENUSELECT_FORMATS \
+  MENUSELECT_FUNCS MENUSELECT_PBX MENUSELECT_RES MENUSELECT_TESTS \
+  MENUSELECT_AGIS MENUSELECT_CORE_SOUNDS MENUSELECT_EXTRA_SOUNDS \
+  MENUSELECT_MOH; do
+  MENUSELECT_ARGS+=(--disable-category "${category}")
+done
 while read -r module; do
   MENUSELECT_ARGS+=(--enable "${module}")
 done < <(required_modules)
+# menuselect always writes menuselect.makeopts in the current directory; the
+# argument names the existing selection it starts from.
 menuselect/menuselect "${MENUSELECT_ARGS[@]}" menuselect.makeopts
 
 echo "=== Compile ==="

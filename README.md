@@ -43,7 +43,7 @@ Inside the archive:
 | Path                       | Contents                                                        |
 |----------------------------|-----------------------------------------------------------------|
 | `sbin/asterisk`            | The server                                                      |
-| `lib/asterisk/modules/`    | Asterisk modules                                                |
+| `lib/asterisk/modules/`    | The required Asterisk modules and what they depend on           |
 | `lib/`                     | Bundled shared libraries                                        |
 | `var/lib/asterisk/`        | Static data Asterisk expects next to itself                     |
 | `LICENSES/`                | License of Asterisk and of every bundled library                |
@@ -113,10 +113,13 @@ boots Asterisk from the tree, and checks the loaded modules.
    into the tree, except the glibc family. Each one is recorded in
    `LICENSES/bundled/PACKAGES.txt` with its package, version and license.
 
-4. The build stops if any required module was not built. The list is
+4. **Only the required modules are built**, together with whatever they
+   depend on. The list is
    [`build/required-modules.txt`](build/required-modules.txt) plus the
    platform's own file (`required-modules.linux.txt` or
-   `required-modules.macos.txt`).
+   `required-modules.macos.txt`). Everything else Asterisk could build is
+   left out: unused code has no place on a server that faces the network.
+   The build stops if a required module did not come out.
 
 5. [`build/verify.sh`](build/verify.sh) then runs on five clean images
    (AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora) with nothing
@@ -188,9 +191,10 @@ that build the address from the name and the tag — do not rename them.
 - **Opus transcoding.** Asterisk's `codec_opus` is a closed binary that Sangoma
   distributes separately from the Asterisk source; it is not shipped here. Browser calls work without it — browsers
   also speak G.711, which Asterisk transcodes itself.
-- **Everything outside the telephony node's needs** whose build dependency was
-  left out on purpose: database backends, LDAP, SNMP, speech engines and the
-  like. `BUILD-INFO.txt` lists what was built.
+- **Every module that is not required** or needed by a required one: voicemail,
+  conferencing, queues, call records, database backends and the rest.
+  `BUILD-INFO.txt` lists exactly what was built. To add a module, add it to
+  the list and run the build.
 
 ## Source & License
 
