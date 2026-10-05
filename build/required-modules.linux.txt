@@ -1,0 +1,5 @@
+# build/required-modules.linux.txt
+# Linux-only part of the required module list (see required-modules.txt).
+
+# --- Timing source: the kernel timer descriptor ---
+res_timing_timerfd

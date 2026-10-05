@@ -1,0 +1,78 @@
+# build/required-modules.txt
+# Modules the Gabion telephony node loads. The build fails if any of them is
+# missing from the tree, and the verification boots Asterisk with exactly this
+# list and fails if any of them is not running.
+#
+# One module per line, without the .so suffix. Dependencies of these modules
+# are loaded by Asterisk itself and are not listed.
+#
+# Modules that exist on one platform only live in required-modules.linux.txt
+# and required-modules.macos.txt; both scripts read this file plus the one
+# for the platform they run on.
+
+# --- WebSocket transport: ARI events/commands and media ---
+res_http_websocket
+res_websocket_client
+chan_websocket
+
+# --- ARI: the application controls calls through it ---
+res_ari
+res_ari_applications
+res_ari_asterisk
+res_ari_bridges
+res_ari_channels
+res_ari_events
+res_ari_playbacks
+res_ari_recordings
+res_stasis
+res_stasis_answer
+res_stasis_playback
+res_stasis_recording
+res_stasis_snoop
+app_stasis
+
+# --- SIP: operator trunks and the browser phone ---
+res_pjproject
+res_pjsip
+res_pjsip_session
+res_pjsip_sdp_rtp
+res_pjsip_transport_websocket
+res_pjsip_endpoint_identifier_ip
+res_pjsip_endpoint_identifier_user
+res_pjsip_authenticator_digest
+res_pjsip_outbound_authenticator_digest
+res_pjsip_outbound_registration
+res_pjsip_registrar
+res_pjsip_nat
+res_pjsip_caller_id
+res_pjsip_dtmf_info
+chan_pjsip
+
+# --- Media: RTP, encryption for WebRTC, bridging, codecs ---
+res_rtp_asterisk
+res_srtp
+res_crypto
+bridge_simple
+bridge_softmix
+bridge_native_rtp
+bridge_holding
+codec_ulaw
+codec_alaw
+codec_resample
+
+# --- Dialplan: entry into the application and the fallback scenarios ---
+pbx_config
+app_dial
+app_playback
+app_record
+app_mixmonitor
+func_callerid
+func_channel
+format_wav
+format_pcm
+format_sln
+
+# --- Configuration storage ---
+res_sorcery_config
+res_sorcery_memory
+res_sorcery_astdb

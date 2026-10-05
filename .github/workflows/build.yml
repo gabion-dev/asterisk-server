@@ -1,0 +1,212 @@
+# .github/workflows/build.yml
+name: Build Asterisk
+
+on:
+  workflow_dispatch:
+    inputs:
+      asterisk_version:
+        description: 'Asterisk release to build (e.g. 22.11.0)'
+        required: true
+        default: '22.11.0'
+      revision:
+        description: 'Revision of this recipe for that Asterisk release (1, 2, …). Raise it when the recipe changed and the Asterisk version did not'
+        required: true
+        default: '1'
+
+permissions:
+  contents: write
+
+# =============================================================================
+# One relocatable tree per platform and architecture: Asterisk, its modules,
+# and every shared library they need that the platform itself does not
+# provide.
+#
+# The build and the verification are shell scripts in build/, not inline
+# steps: the same scripts run here and on a developer machine, so the recipe
+# can be changed and proven without a round trip through this workflow.
+#
+# Linux: built on AlmaLinux 9 (glibc 2.34). glibc is backward compatible only
+# upward, so the tree runs on any host with glibc 2.34 or newer, and the base
+# is supported until 2032 — the bundled libraries carry its security patches
+# as of the build day. That matters here more than for a development tool: on
+# a telephony node this binary faces the network.
+#
+# macOS: built with the Xcode toolchain for macOS 13 and newer; OpenSSL and
+# libsrtp are built from pinned source, everything else comes from macOS.
+#
+# Every architecture builds on a NATIVE runner (no emulation): the
+# verification boots Asterisk and loads every required module, and a verdict
+# obtained under emulation says nothing about real hardware.
+#
+# A release is published only when every platform built and verified: a
+# release with a platform missing would be a different product under the
+# same tag.
+# =============================================================================
+
+jobs:
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      ASTERISK_VERSION: ${{ github.event.inputs.asterisk_version }}
+
+    steps:
+      - name: Check out the recipe
+        uses: actions/checkout@v4
+
+      - name: Build on the glibc floor
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          docker run --rm \
+            -v "${PWD}:/src:ro" \
+            -v "${PWD}/out:/out" \
+            almalinux:9 \
+            bash /src/build/build.sh "${ASTERISK_VERSION}" /out
+
+      - name: Verify on clean hosts (nothing installed)
+        run: |
+          set -euxo pipefail
+          # Each image is a host with nothing of ours on it. The tree is
+          # mounted read-only: a verification that could write into the tree
+          # could also repair it.
+          for img in almalinux:9-minimal ubuntu:22.04 ubuntu:24.04 debian:12 fedora:latest; do
+            echo "=== guard on ${img} (${{ matrix.arch }}) ==="
+            docker run --rm \
+              -v "${PWD}:/src:ro" \
+              -v "${PWD}/out:/out:ro" \
+              "${img}" \
+              bash /src/build/verify.sh /out/tree
+          done
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          ARCHIVE="asterisk-server-linux-${{ matrix.arch }}.tar.gz"
+          tar -czf "${ARCHIVE}" -C out/tree .
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asterisk-server-linux-${{ matrix.arch }}
+          path: |
+            asterisk-server-linux-${{ matrix.arch }}.tar.gz
+            asterisk-server-linux-${{ matrix.arch }}.tar.gz.sha256
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: amd64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    env:
+      ASTERISK_VERSION: ${{ github.event.inputs.asterisk_version }}
+
+    steps:
+      - name: Check out the recipe
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          set -euxo pipefail
+          bash build/build-macos.sh "${ASTERISK_VERSION}" "${PWD}/out"
+
+      - name: Package
+        run: |
+          set -euxo pipefail
+          ARCHIVE="asterisk-server-darwin-${{ matrix.arch }}.tar.gz"
+          tar -czf "${ARCHIVE}" -C out/tree .
+          shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asterisk-server-darwin-${{ matrix.arch }}
+          path: |
+            asterisk-server-darwin-${{ matrix.arch }}.tar.gz
+            asterisk-server-darwin-${{ matrix.arch }}.tar.gz.sha256
+
+  verify-macos:
+    # A different machine from the one that built the tree: the directories
+    # the build used do not exist here, so a reference to any of them that
+    # survived in the tree fails to load. Each architecture is checked on
+    # every macOS version a native runner exists for.
+    needs: [build-macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: arm64
+            runner: macos-15
+          - arch: amd64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out the recipe
+        uses: actions/checkout@v4
+
+      - name: Download the built archive
+        uses: actions/download-artifact@v4
+        with:
+          name: asterisk-server-darwin-${{ matrix.arch }}
+
+      - name: Verify on a clean host
+        run: |
+          set -euxo pipefail
+          shasum -a 256 --check "asterisk-server-darwin-${{ matrix.arch }}.tar.gz.sha256"
+          mkdir tree
+          tar -xzf "asterisk-server-darwin-${{ matrix.arch }}.tar.gz" -C tree
+          bash build/verify.sh tree
+
+  release:
+    needs: [build-linux, verify-macos]
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.asterisk_version }}-r${{ github.event.inputs.revision }}
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Asterisk ${{ github.event.inputs.asterisk_version }} (recipe revision ${{ github.event.inputs.revision }})
+          body: |
+            Relocatable Asterisk `${{ github.event.inputs.asterisk_version }}` for Linux and macOS: the server, its modules, and every shared library they need that the platform does not provide. Runs from any directory, with no root and nothing installed.
+
+            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora. macOS: 14 and 15 on Apple Silicon, 15 on Intel, each on a machine other than the one that built the tree.
+
+            ## Platforms
+            - `asterisk-server-linux-amd64.tar.gz` — Linux x64, glibc 2.34+
+            - `asterisk-server-linux-arm64.tar.gz` — Linux ARM64, glibc 2.34+
+            - `asterisk-server-darwin-arm64.tar.gz` — macOS 13+, Apple Silicon
+            - `asterisk-server-darwin-amd64.tar.gz` — macOS 13+, Intel
+
+            Not covered: Linux with glibc older than 2.34, musl (Alpine). Asterisk does not exist for Windows; under Windows it runs inside WSL 2.
+
+            ## Source
+            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build changes one compiler flag in two build files. `BUILD-INFO.txt` inside each archive records the source checksum, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
+
+            ## License
+            GNU General Public License v2.0 — the license of Asterisk.
+          files: |
+            asterisk-server-linux-*

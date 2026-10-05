@@ -1,0 +1,8 @@
+# build/required-modules.macos.txt
+# macOS-only part of the required module list (see required-modules.txt).
+
+# --- Timing source ---
+# Linux timer descriptors do not exist on macOS, and Asterisk excludes its
+# kqueue timing source from any build that has launchd support — which every
+# macOS build has. The portable thread-based source is what remains.
+res_timing_pthread
