@@ -132,10 +132,16 @@ boots Asterisk from the tree, and checks the loaded modules.
    source for macOS 13; libxml2, SQLite, libedit and zlib are the ones macOS
    ships. Nothing is taken from Homebrew.
 
-2. Asterisk asks the compiler for macOS 10.6 as the oldest supported system, a
-   target the current toolchain no longer accepts as written. That one flag is
-   replaced, in two build files; `BUILD-INFO.txt` records the edit. No other
-   line of the Asterisk source is touched.
+2. Two edits are made to the Asterisk build files — no line of C is touched,
+   and `BUILD-INFO.txt` records both:
+   - Asterisk asks the compiler for macOS 10.6 as the oldest supported
+     system, a target the current toolchain no longer accepts as written; the
+     flag is replaced with the deployment target of the build.
+   - The macOS branch that links the bundled SIP library names its archives
+     with the machine name of one particular Mac, written into the file as a
+     literal; it is replaced with the variable that holds the real name.
+
+   Each edit stops the build if the text it expects is no longer there.
 
 3. The tree is made self-locating: every reference to a bundled library is
    rewritten to be relative to the executable, the build stops if any binary
@@ -190,8 +196,8 @@ that build the address from the name and the tag — do not rename them.
 
 Built from the release tarballs published at
 [downloads.asterisk.org](https://downloads.asterisk.org/pub/telephony/asterisk/releases/):
-unmodified on Linux, with one compiler flag changed in two build files on
-macOS. The complete corresponding source of a release is that tarball plus the
+unmodified on Linux, with two edits to build files on macOS (described
+above). The complete corresponding source of a release is that tarball plus the
 recipe of this repository at the release tag; `BUILD-INFO.txt` names the
 tarball, its checksum and any edit.
 

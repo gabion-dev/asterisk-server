@@ -125,14 +125,32 @@ tar -xzf "${TARBALL}"
 cd "asterisk-${ASTERISK_VERSION}"
 
 echo "=== Build-file edits for current macOS ==="
-# The only changes made to the Asterisk source tree, both in build files and
-# both about one compiler flag: Asterisk asks for macOS 10.6 as the oldest
-# supported system, a target the current toolchain no longer accepts as
-# written. It is replaced with the deployment target of this build.
+# The only changes made to the Asterisk source tree. All of them are in build
+# files; no line of C is touched. Each edit stops the build if the text it
+# expects is gone, so a new Asterisk version cannot silently skip one.
+#
+# 1. Asterisk asks the compiler for macOS 10.6 as the oldest supported
+#    system, a target the current toolchain no longer accepts as written. It
+#    is replaced with the deployment target of this build.
 replace_or_fail Makefile \
   "-mmacosx-version-min=10.6" "-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
 replace_or_fail main/Makefile \
   "-mmacosx-version-min=10.6" "-mmacosx-version-min=${MACOSX_DEPLOYMENT_TARGET}"
+
+# 2. The macOS branch that links the bundled SIP library names its archives
+#    with a machine name written into the file as a literal — the name of
+#    one particular Mac and macOS version. On any other machine the archives
+#    carry a different name and the link fails with "library not found". The
+#    literal is replaced with the variable that holds the real name: the
+#    build of the SIP library records it, and this file already reads that
+#    record a few lines above.
+PJ_TARGET_LITERAL="$(grep -E '^PJ_TARGET := ' main/Makefile || true)"
+if [ -z "${PJ_TARGET_LITERAL}" ]; then
+  echo "ERROR: no 'PJ_TARGET := ' line in main/Makefile" >&2
+  echo "The Asterisk build files changed in this version; review the edit." >&2
+  exit 1
+fi
+replace_or_fail main/Makefile "${PJ_TARGET_LITERAL}" 'PJ_TARGET := $(TARGET_NAME)'
 
 echo "=== Configure ==="
 # The bundled OpenSSL and libsrtp are named explicitly so that nothing is
@@ -269,7 +287,9 @@ cp "${WORK}/libsrtp-${LIBSRTP_VERSION}/LICENSE" "${TREE}/LICENSES/bundled/libsrt
   echo "asterisk-version: ${ASTERISK_VERSION}"
   echo "source: ${DOWNLOAD_BASE}/${TARBALL}"
   echo "source-sha256: $(shasum -a 256 "${WORK}/${TARBALL}" | cut -d' ' -f1)"
-  echo "source-edits: -mmacosx-version-min=10.6 replaced with ${MACOSX_DEPLOYMENT_TARGET} in Makefile and main/Makefile"
+  echo "source-edits:"
+  echo "  - Makefile, main/Makefile: -mmacosx-version-min=10.6 replaced with ${MACOSX_DEPLOYMENT_TARGET}"
+  echo "  - main/Makefile: literal '${PJ_TARGET_LITERAL}' replaced with 'PJ_TARGET := \$(TARGET_NAME)'"
   echo "openssl-version: ${OPENSSL_VERSION}"
   echo "libsrtp-version: ${LIBSRTP_VERSION} (OpenSSL backend)"
   echo "built-on: macOS $(sw_vers -productVersion)"
