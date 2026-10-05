@@ -142,7 +142,11 @@ jobs:
     # A different machine from the one that built the tree: the directories
     # the build used do not exist here, so a reference to any of them that
     # survived in the tree fails to load. Each architecture is checked on
-    # every macOS version a native runner exists for.
+    # every macOS version a native runner exists for — the newest one first
+    # of all: a developer's Mac runs the current macOS, not the one the tree
+    # was built on. When GitHub adds a runner for a new macOS, add it here
+    # and to verify-release.yml, and run that workflow against the published
+    # release.
     needs: [build-macos]
     strategy:
       fail-fast: false
@@ -152,8 +156,12 @@ jobs:
             runner: macos-14
           - arch: arm64
             runner: macos-15
+          - arch: arm64
+            runner: macos-26
           - arch: amd64
             runner: macos-15-intel
+          - arch: amd64
+            runner: macos-26-intel
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -193,7 +201,7 @@ jobs:
           body: |
             Relocatable Asterisk `${{ github.event.inputs.asterisk_version }}` for Linux and macOS: the server, its modules, and every shared library they need that the platform does not provide. Runs from any directory, with no root and nothing installed.
 
-            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora. macOS: 14 and 15 on Apple Silicon, 15 on Intel, each on a machine other than the one that built the tree.
+            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora. macOS: 14, 15 and 26 on Apple Silicon, 15 and 26 on Intel, each on a machine other than the one that built the tree.
 
             ## Platforms
             - `asterisk-server-linux-amd64.tar.gz` — Linux x64, glibc 2.34+

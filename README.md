@@ -157,9 +157,11 @@ boots Asterisk from the tree, and checks the loaded modules.
    re-signed.
 
 4. `build/verify.sh` — the same script as on Linux — runs on **other
-   machines** than the one that built the tree (macOS 14 and 15 on Apple
-   Silicon, macOS 15 on Intel), so a reference to a build directory that
-   survived fails to load there.
+   machines** than the one that built the tree (macOS 14, 15 and 26 on
+   Apple Silicon, macOS 15 and 26 on Intel), so a reference to a build
+   directory that survived fails to load there. The newest macOS is always
+   in the list: a developer's Mac runs the current system, not the one the
+   tree was built on.
 
 Every architecture builds and verifies on a native runner, without emulation.
 
@@ -184,6 +186,14 @@ docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out:ro" ubuntu:24.04 \
 bash build/build-macos.sh 22.11.0 out
 bash build/verify.sh out/tree
 ```
+
+### Verifying a published release
+
+The **Verify Release** workflow downloads the archives of an existing release
+and runs `build/verify.sh` on them, on every Linux image and macOS runner of
+the list — without rebuilding anything, so the published archives and their
+checksums stay as they are. Run it when a new macOS or a new Linux
+distribution release appears: add the runner or the image to the list first.
 
 ### Releasing
 

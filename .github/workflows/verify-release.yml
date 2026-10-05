@@ -1,0 +1,111 @@
+# .github/workflows/verify-release.yml
+name: Verify Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Published release to verify (e.g. 22.11.0-r1)'
+        required: true
+        default: '22.11.0-r1'
+
+permissions:
+  contents: read
+
+# =============================================================================
+# Verifies the archives of a PUBLISHED release on clean hosts, without
+# building anything.
+#
+# The build workflow verifies a tree on the systems that exist on the build
+# day. Systems keep appearing afterwards — a new macOS every year, new Linux
+# distribution releases — and a developer installs the archive on whatever is
+# current. Rebuilding the release to check a new system would replace the
+# published archives and break every checksum pinned against them; this
+# workflow checks the very bytes that are published instead.
+#
+# The verification itself is build/verify.sh, the same script the build
+# runs: Asterisk is started from the tree and every required module has to
+# be running.
+#
+# Keep the lists below equal to the ones in build.yml, and put a new system
+# here as soon as a runner or an image for it exists.
+# =============================================================================
+
+env:
+  DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.release_tag }}
+
+jobs:
+  verify-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out the recipe
+        uses: actions/checkout@v7
+
+      - name: Download the published archive
+        run: |
+          set -euxo pipefail
+          ARCHIVE="asterisk-server-linux-${{ matrix.arch }}.tar.gz"
+          curl --fail --location --silent --show-error -O "${DOWNLOAD_BASE}/${ARCHIVE}"
+          curl --fail --location --silent --show-error -O "${DOWNLOAD_BASE}/${ARCHIVE}.sha256"
+          sha256sum --check "${ARCHIVE}.sha256"
+          mkdir tree
+          tar -xzf "${ARCHIVE}" -C tree
+
+      - name: Verify on clean hosts (nothing installed)
+        run: |
+          set -euxo pipefail
+          # The tree is mounted read-only: a verification that could write
+          # into the tree could also repair it.
+          for img in almalinux:9-minimal ubuntu:22.04 ubuntu:24.04 debian:12 fedora:latest; do
+            echo "=== guard on ${img} (${{ matrix.arch }}) ==="
+            docker run --rm \
+              -v "${PWD}:/src:ro" \
+              "${img}" \
+              bash /src/build/verify.sh /src/tree
+          done
+
+  verify-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: arm64
+            runner: macos-15
+          - arch: arm64
+            runner: macos-26
+          - arch: amd64
+            runner: macos-15-intel
+          - arch: amd64
+            runner: macos-26-intel
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out the recipe
+        uses: actions/checkout@v7
+
+      - name: Download the published archive
+        run: |
+          set -euxo pipefail
+          ARCHIVE="asterisk-server-darwin-${{ matrix.arch }}.tar.gz"
+          curl --fail --location --silent --show-error -O "${DOWNLOAD_BASE}/${ARCHIVE}"
+          curl --fail --location --silent --show-error -O "${DOWNLOAD_BASE}/${ARCHIVE}.sha256"
+          shasum -a 256 --check "${ARCHIVE}.sha256"
+          mkdir tree
+          tar -xzf "${ARCHIVE}" -C tree
+
+      - name: Verify on a clean host
+        run: |
+          set -euxo pipefail
+          sw_vers
+          bash build/verify.sh tree
