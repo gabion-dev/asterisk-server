@@ -1,229 +1,256 @@
 # asterisk-server (Linux and macOS, amd64 / arm64)
 
-Relocatable builds of the [Asterisk](https://www.asterisk.org/) telephony
-server for Linux and macOS: the server, its modules, and every shared library
-they need that the platform itself does not provide — so Asterisk runs from
-any directory on a clean host, with no root and nothing installed.
+Prebuilt [Asterisk®](https://www.asterisk.org/) for Linux (x86-64, ARM64) and
+macOS (Apple Silicon, Intel). Each release archive is a directory tree that
+runs from wherever it is extracted: the Asterisk server, its modules, and the
+shared libraries the platform does not provide. There is no installer, and
+root is not needed.
 
-## What this solves
+The archives are built by GitHub Actions from the Asterisk release tarball,
+with the scripts in [`build/`](build/). The set of modules is the one the
+telephony node of the [Gabion](https://github.com/gabion-dev) framework loads.
+Gabion downloads these archives itself; the archives do not need Gabion.
 
-Asterisk is distributed as source. Distribution packages lag behind (the
-features these builds exist for arrived in 22.6 and 22.8), install into system
-directories, and need root; for macOS there are no packages at all. This
-repository builds one tree per platform and architecture that:
+This project is not affiliated with, endorsed by, or sponsored by Sangoma or
+the Asterisk project.
 
-- runs **from any location** — every directory Asterisk uses is given at
-  start through `asterisk.conf`, and the tree finds its own libraries;
-- carries **its own libraries** — on Linux everything but glibc (OpenSSL,
-  libsrtp, libxml2, SQLite and the rest), on macOS everything macOS does not
-  ship (OpenSSL and libsrtp);
-- is the **same artifact** for a development machine and for a telephony node.
+## Releases
 
-The builds exist for the [Gabion](https://github.com/gabion-dev) framework,
-which runs Asterisk as its telephony node, but nothing in the tree is specific
-to Gabion: it is stock Asterisk.
+A release tag is `<asterisk-version>-r<revision>`, for example `22.11.0-r1`:
+Asterisk 22.11.0, revision 1 of this recipe for it. Each release has four
+archives, each with a `.sha256` file next to it:
 
-## What ships
+- `asterisk-server-linux-amd64.tar.gz` — Linux, x86-64
+- `asterisk-server-linux-arm64.tar.gz` — Linux, ARM64
+- `asterisk-server-darwin-arm64.tar.gz` — macOS, Apple Silicon
+- `asterisk-server-darwin-amd64.tar.gz` — macOS, Intel
 
-Each release publishes one archive per platform and architecture, plus its
-SHA-256:
+A release is published only after all four archives were built and passed the
+check described under [Where it has run](#where-it-has-run).
 
-| Archive                               | Platform                 |
-|---------------------------------------|--------------------------|
-| `asterisk-server-linux-amd64.tar.gz`  | Linux x64, glibc 2.34+   |
-| `asterisk-server-linux-arm64.tar.gz`  | Linux ARM64, glibc 2.34+ |
-| `asterisk-server-darwin-arm64.tar.gz` | macOS 13+, Apple Silicon |
-| `asterisk-server-darwin-amd64.tar.gz` | macOS 13+, Intel         |
-
-A release is published only when every one of the four built and passed
-verification.
-
-Inside the archive:
-
-| Path                       | Contents                                                        |
-|----------------------------|-----------------------------------------------------------------|
-| `sbin/asterisk`            | The server                                                      |
-| `lib/asterisk/modules/`    | The required Asterisk modules and what they depend on           |
-| `lib/`                     | Bundled shared libraries                                        |
-| `var/lib/asterisk/`        | Static data Asterisk expects next to itself                     |
-| `LICENSES/`                | License of Asterisk and of every bundled library                |
-| `BUILD-INFO.txt`           | Asterisk version, source checksum, build base, full module list |
-
-No configuration files, sound packs or music are shipped: configuration is
-the job of whoever runs the server, and prompts come from the application.
-
-Release tags are `<asterisk-version>-r<revision>`, for example `22.11.0-r1`.
-The revision counts changes of this recipe for one Asterisk version.
-
-## Platforms
-
-- **Linux with glibc 2.34 or newer** — AlmaLinux / Rocky / RHEL 9+, Ubuntu
-  22.04+, Debian 12+, Fedora, and WSL 2 with any of them.
-- **macOS 13 or newer** — Apple Silicon and Intel.
-- **Older glibc** — not covered. The tree is built on AlmaLinux 9, and glibc is
-  backward compatible only upward.
-- **musl (Alpine)** — not covered. glibc-linked libraries do not load on musl.
-- **Windows** — Asterisk does not exist for Windows. Under Windows it runs
-  inside WSL 2.
-
-The Asterisk project itself supports Linux; macOS is a platform it leaves to
-the community. These builds make the macOS tree pass the same verification as
-the Linux one, and that verification is what the macOS support here amounts
-to — it is meant for development machines, not for production telephony.
-
-## Usage
-
-Extract the archive anywhere and start Asterisk with a configuration that
-names its directories:
+## Download and check
 
 ```sh
-mkdir asterisk && tar -xzf asterisk-server-linux-amd64.tar.gz -C asterisk
-export LD_LIBRARY_PATH="$PWD/asterisk/lib"   # Linux only
-asterisk/sbin/asterisk -V
+TAG=22.11.0-r1
+ARCHIVE=asterisk-server-linux-amd64.tar.gz
+BASE="https://github.com/gabion-dev/asterisk-server/releases/download/${TAG}"
+curl -fLO "${BASE}/${ARCHIVE}"
+curl -fLO "${BASE}/${ARCHIVE}.sha256"
+
+sha256sum --check "${ARCHIVE}.sha256"         # Linux
+shasum -a 256 --check "${ARCHIVE}.sha256"     # macOS
+
+mkdir asterisk-server
+tar -xzf "${ARCHIVE}" -C asterisk-server
 ```
 
-On macOS no variable is needed: the tree finds its libraries relative to the
-executable.
+The `.sha256` file holds one line, `<hash>  <archive name>`. It comes from the
+same release as the archive, so it detects a damaged download, not a replaced
+release.
 
-To run it, write an `asterisk.conf` whose `[directories]` section points
-`astmoddir` at `lib/asterisk/modules` and `astvarlibdir` / `astdatadir` at
-`var/lib/asterisk` inside the extracted tree, and every writable directory
-(`astdbdir`, `astspooldir`, `astrundir`, `astlogdir`, `astkeydir`) wherever
-you keep state — then start `sbin/asterisk -C /path/to/asterisk.conf -f`.
+## What is in an archive
 
-[`build/verify.sh`](build/verify.sh) does exactly this and is the working
-reference: it writes a minimal configuration into a temporary directory,
-boots Asterisk from the tree, and checks the loaded modules.
+The archive has no top-level directory; extract it into one you create.
 
-## How it is built
+```
+sbin/asterisk            the server
+sbin/                    the other programs Asterisk installs (astcanary,
+                         astdb2sqlite3, astgenkey, rasterisk, …)
+lib/asterisk/modules/    the modules
+lib/                     the bundled shared libraries
+var/lib/asterisk/        rest-api/ (the ARI API descriptions), static-http/,
+                         images/, scripts/; sounds/, moh/ and the other
+                         directories Asterisk creates are empty
+var/cache/, var/log/,
+var/run/, var/spool/     empty directories
+LICENSES/                license texts (see Source and licenses)
+BUILD-INFO.txt           how this archive was built
+```
 
-### Linux
+**Modules.** The modules listed in
+[`build/required-modules.txt`](build/required-modules.txt) plus the platform's
+own file —
+[`required-modules.linux.txt`](build/required-modules.linux.txt)
+(`res_timing_timerfd`) or
+[`required-modules.macos.txt`](build/required-modules.macos.txt)
+(`res_timing_pthread`) — and the modules they depend on. In `22.11.0-r1` that
+is 58 modules: the 56 listed, `res_ari_model` and `res_pjsip_pubsub`. They
+cover ARI, WebSocket (`chan_websocket`, `res_websocket_client`), PJSIP, RTP
+with SRTP, bridging, the G.711 codecs, and the dialplan applications Dial,
+Playback, Record and MixMonitor. Every other module is left out, among them
+voicemail (`app_voicemail`), conferencing (`app_confbridge`), queues
+(`app_queue`) and every CDR backend.
 
-1. [`build/build.sh`](build/build.sh) runs inside a clean AlmaLinux 9
-   container. It downloads the **unmodified** Asterisk release tarball,
-   checks it against the checksum Asterisk publishes, and builds it with the
-   pjproject and jansson versions that Asterisk itself pins.
+**Bundled libraries.** The shared libraries the server and its modules need
+beyond what the platform provides: on Linux everything except the glibc
+family, on macOS OpenSSL, libsrtp and Asterisk's own `libasteriskpj` and
+`libasteriskssl`. `BUILD-INFO.txt` records how the archive was built.
 
-2. libsrtp is built from pinned source against OpenSSL instead of being taken
-   from the base system. The system package encrypts with NSS, which loads its
-   cipher modules at run time by name; no link-time inspection sees that
-   dependency, and the library fails to initialize on a clean host.
+**Not included:**
 
-3. Every shared library the server and its modules link against is copied
-   into the tree, except the glibc family. Each one is recorded in
-   `LICENSES/bundled/PACKAGES.txt` with its package, version and license.
+- configuration files — Asterisk reads them from a directory you name (see
+  [Run](#run));
+- sound prompts and music on hold;
+- the Opus codec: `codec_opus` is not part of the Asterisk source tarball.
+  RFC 7874 requires WebRTC endpoints to implement both Opus and G.711 (PCMA and
+  PCMU), so a browser can also use G.711, which the archive has (`codec_alaw`,
+  `codec_ulaw`);
+- Asterisk's XML documentation (built with `--disable-xmldoc`).
 
-4. **Only the required modules are built**, together with whatever they
-   depend on. The list is
-   [`build/required-modules.txt`](build/required-modules.txt) plus the
-   platform's own file (`required-modules.linux.txt` or
-   `required-modules.macos.txt`). Everything else Asterisk could build is
-   left out: unused code has no place on a server that faces the network.
-   The build stops if a required module did not come out.
+## Where it has run
 
-5. [`build/verify.sh`](build/verify.sh) then runs on five clean images
-   (AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora) with nothing
-   installed. On each it **boots Asterisk** from the tree and requires every
-   required module to be running. Printing a version is not accepted as
-   proof: a module whose library is missing fails when it is loaded, not when
-   it is built.
+"Ran" below means: Asterisk was started from the tree, reported that it had
+fully booted, and every module of the required list was `Running` — the check
+[`build/verify.sh`](build/verify.sh) makes.
 
-### macOS
+For `22.11.0-r1`:
 
-1. [`build/build-macos.sh`](build/build-macos.sh) runs on a macOS machine with
-   the Xcode command line tools. OpenSSL and libsrtp are built from pinned
-   source for macOS 13; libxml2, SQLite, libedit and zlib are the ones macOS
-   ships. Nothing is taken from Homebrew.
+- **Linux x86-64 and ARM64** — AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04,
+  Debian 12 and Fedora (containers of the stock images, GitHub Actions,
+  5 October 2026); Ubuntu 26.04 LTS x86-64 directly on a host, as an
+  ordinary user;
+- **macOS** — 14.8.9, 15.7.9 and 26.6.2 on Apple Silicon; 15.7.9 and 26.6.1
+  on Intel (GitHub Actions, 5 October 2026), as the machine's ordinary user.
 
-2. Two edits are made to the Asterisk build files — no line of C is touched,
-   and `BUILD-INFO.txt` records both:
-   - Asterisk asks the compiler for macOS 10.6 as the oldest supported
-     system, a target the current toolchain no longer accepts as written; the
-     flag is replaced with the deployment target of the build.
-   - The macOS branch that links the bundled SIP library names its archives
-     with the machine name of one particular Mac, written into the file as a
-     literal; it is replaced with the variable that holds the real name.
+**Not built:** Linux with musl libc (Alpine Linux is built around musl),
+Windows, BSD.
 
-   Each edit stops the build if the text it expects is no longer there.
+## Requirements
 
-   One compiler definition is added as well, `-DTCP_KEEPIDLE=TCP_KEEPALIVE`:
-   the same TCP option has one name on Linux and another on macOS, and
-   Asterisk's WebSocket client uses the Linux name without the mapping that
-   its SIP transport code already has.
+**Linux.** x86-64 or ARM64 with glibc that provides the symbol version
+`GLIBC_2.35`: glibc 2.35 or newer, or the glibc 2.34 of AlmaLinux 9, which
+provides it.
 
-3. The tree is made self-locating: every reference to a bundled library is
-   rewritten to be relative to the executable, the build stops if any binary
-   still references a path outside the tree and macOS, and every binary is
-   re-signed.
+**macOS.** Apple Silicon or Intel; the versions it has run on are listed under
+[Where it has run](#where-it-has-run).
 
-4. `build/verify.sh` — the same script as on Linux — runs on **other
-   machines** than the one that built the tree (macOS 14, 15 and 26 on
-   Apple Silicon, macOS 15 and 26 on Intel), so a reference to a build
-   directory that survived fails to load there. The newest macOS is always
-   in the list: a developer's Mac runs the current system, not the one the
-   tree was built on.
+**Both.** No root and no packages. Use the archive of your machine's
+architecture.
 
-Every architecture builds and verifies on a native runner, without emulation.
+## Run
 
-The glibc floor is AlmaLinux 9 rather than something older on purpose. The
-bundled libraries come from the build base, so the base has to be a system
-that still receives security patches: on a telephony node this server faces
-the network. AlmaLinux 9 is supported until 2032.
-
-### Building locally
-
-The scripts are the whole recipe; the workflow only calls them.
+On Linux the server finds its bundled libraries through `LD_LIBRARY_PATH`;
+set it for every call of `sbin/asterisk`, including the remote console. On
+macOS no variable is needed.
 
 ```sh
-# Linux
+TREE="$PWD/asterisk-server"         # the extracted archive
+export LD_LIBRARY_PATH="$TREE/lib"  # Linux only
+"$TREE/sbin/asterisk" -V
+```
+
+Asterisk needs an `asterisk.conf` whose `[directories]` section names every
+directory it uses — name them all, or a directory left out falls back to a
+compiled-in default outside the tree. In the configuration below the tree is
+only read, and everything Asterisk writes goes into a directory you choose:
+
+```sh
+STATE="$HOME/asterisk-state"        # everything Asterisk writes
+mkdir -p "$STATE/etc" "$STATE/db" "$STATE/keys" "$STATE/spool" \
+         "$STATE/run" "$STATE/log" "$STATE/cache"
+cat > "$STATE/etc/asterisk.conf" <<CONF
+[directories]
+astetcdir => $STATE/etc
+astmoddir => $TREE/lib/asterisk/modules
+astvarlibdir => $TREE/var/lib/asterisk
+astdatadir => $TREE/var/lib/asterisk
+astagidir => $TREE/var/lib/asterisk/agi-bin
+astsbindir => $TREE/sbin
+astdbdir => $STATE/db
+astkeydir => $STATE/keys
+astspooldir => $STATE/spool
+astrundir => $STATE/run
+astlogdir => $STATE/log
+astcachedir => $STATE/cache
+CONF
+```
+
+- `astetcdir` is where Asterisk reads every other configuration file
+  (`modules.conf`, `pjsip.conf`, `http.conf`, `ari.conf`, …). None are shipped;
+  [`build/verify.sh`](build/verify.sh) writes a minimal set with which Asterisk
+  boots with every module running.
+- Asterisk appends to some of these paths: the keys go to
+  `<astkeydir>/keys`, the database is `<astdbdir>/astdb.sqlite3`.
+- Keep the path of `astrundir` short. The control socket `asterisk.ctl` is
+  created there, and a Unix socket path is limited to 108 bytes on Linux
+  (`unix(7)`) and 104 on macOS (`sys/un.h`); with a longer path the remote
+  console cannot connect.
+
+Start the server in the foreground:
+
+```sh
+"$TREE/sbin/asterisk" -C "$STATE/etc/asterisk.conf" -f
+```
+
+The remote console needs the same `-C`: it finds the control socket through
+`astrundir`.
+
+```sh
+"$TREE/sbin/asterisk" -C "$STATE/etc/asterisk.conf" -rx "core show settings"
+```
+
+## Security updates
+
+Everything in the tree is fixed on the build day. On Linux the bundled system
+libraries are copies from AlmaLinux 9 packages, each listed with its package
+version in `LICENSES/bundled/PACKAGES.txt`; libsrtp, and on macOS OpenSSL, are
+built from pinned source, with their versions in `BUILD-INFO.txt`. Updating
+the host does not change them. What the tree takes from the host — glibc on
+Linux, the system libraries on macOS — is updated with the host.
+
+A fix in Asterisk or in a bundled library reaches you only through a new
+release of this repository: a new revision for the same Asterisk version, or a
+new Asterisk version. Releases are listed on the
+[releases page](https://github.com/gabion-dev/asterisk-server/releases).
+
+## Build it yourself
+
+Linux (Docker):
+
+```sh
 mkdir -p out
 docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out" almalinux:9 \
   bash /src/build/build.sh 22.11.0 /out
 docker run --rm -v "$PWD:/src:ro" -v "$PWD/out:/out:ro" ubuntu:24.04 \
   bash /src/build/verify.sh /out/tree
+```
 
-# macOS
+macOS (Xcode command line tools):
+
+```sh
 bash build/build-macos.sh 22.11.0 out
 bash build/verify.sh out/tree
 ```
 
-### Verifying a published release
+The tree is in `out/tree`. To add a module, add its name to
+`build/required-modules.txt` (or to the platform's file) and build again.
 
-The **Verify Release** workflow downloads the archives of an existing release
-and runs `build/verify.sh` on them, on every Linux image and macOS runner of
-the list — without rebuilding anything, so the published archives and their
-checksums stay as they are. Run it when a new macOS or a new Linux
-distribution release appears: add the runner or the image to the list first.
+## Source and licenses
 
-### Releasing
+The archives are built from the Asterisk release tarball at
+[downloads.asterisk.org](https://downloads.asterisk.org/pub/telephony/asterisk/releases/),
+checked against the checksum published next to it, by the scripts in
+[`build/`](build/) at the release tag. `BUILD-INFO.txt` names the tarball and
+its SHA-256.
 
-Run the **Build Asterisk** workflow with the Asterisk version and the recipe
-revision. Published archive names are part of the contract with downloaders
-that build the address from the name and the tag — do not rename them.
+- **Linux:** the Asterisk source is used unmodified.
+- **macOS:** two edits to Asterisk's build files (`Makefile`,
+  `main/Makefile`) and two added compiler flags,
+  `-DTCP_KEEPIDLE=TCP_KEEPALIVE -Wno-macro-redefined`; no C file is edited.
+  `BUILD-INFO.txt` lists each of them.
 
-## What is not included
+Other sources that go into an archive:
 
-- **Opus transcoding.** Asterisk's `codec_opus` is a closed binary that Sangoma
-  distributes separately from the Asterisk source; it is not shipped here. Browser calls work without it — browsers
-  also speak G.711, which Asterisk transcodes itself.
-- **Every module that is not required** or needed by a required one: voicemail,
-  conferencing, queues, call records, database backends and the rest.
-  `BUILD-INFO.txt` lists exactly what was built. To add a module, add it to
-  the list and run the build.
+- pjproject 2.17 (`lib/libasteriskpj.*`) and jansson 2.15.1 (linked into
+  `sbin/asterisk`) — the versions Asterisk 22.11.0 pins; its build downloads
+  them from [asterisk/third-party](https://github.com/asterisk/third-party);
+- libsrtp 2.8.1, from [cisco/libsrtp](https://github.com/cisco/libsrtp);
+- macOS: OpenSSL 3.5.9, from [openssl/openssl](https://github.com/openssl/openssl);
+- Linux: the bundled system libraries, from AlmaLinux 9 binary packages.
 
-## Source & License
+This repository is licensed under the [GNU General Public License v2.0](LICENSE).
+Asterisk is distributed under the GPL version 2; its `COPYING` and `LICENSE`
+are in `LICENSES/` of every archive. Bundled libraries keep their own
+licenses.
 
-Built from the release tarballs published at
-[downloads.asterisk.org](https://downloads.asterisk.org/pub/telephony/asterisk/releases/):
-unmodified on Linux; on macOS with two edits to build files and one added
-compiler definition (described above). The complete corresponding source of a release is that tarball plus the
-recipe of this repository at the release tag; `BUILD-INFO.txt` names the
-tarball, its checksum and any edit.
-
-Distributed under the [GNU General Public License v2.0](LICENSE), the same
-license as Asterisk. Bundled libraries keep their own licenses, listed in
-`LICENSES/bundled/` inside each archive.
-
-Asterisk is a registered trademark of Sangoma Technologies. This project is
-NOT affiliated with, endorsed by, or sponsored by Sangoma Technologies or the
-Asterisk project.
+The Asterisk name and logos are trademarks owned by Sangoma US Inc.
