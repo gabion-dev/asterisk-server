@@ -77,7 +77,7 @@ jobs:
           # Each image is a host with nothing of ours on it. The tree is
           # mounted read-only: a verification that could write into the tree
           # could also repair it.
-          for img in almalinux:9-minimal ubuntu:22.04 ubuntu:24.04 debian:12 fedora:latest; do
+          for img in almalinux:9-minimal almalinux:10-minimal ubuntu:22.04 ubuntu:24.04 ubuntu:26.04 debian:12 debian:13 fedora:latest; do
             echo "=== guard on ${img} (${{ matrix.arch }}) ==="
             docker run --rm \
               -v "${PWD}:/src:ro" \
@@ -158,6 +158,9 @@ jobs:
             runner: macos-15
           - arch: arm64
             runner: macos-26
+          # macOS 27: GitHub runs it on the image of Xcode 27 (arm64 only).
+          - arch: arm64
+            runner: xcode-27
           - arch: amd64
             runner: macos-15-intel
           - arch: amd64
