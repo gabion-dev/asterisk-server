@@ -1,0 +1,83 @@
+Audiohooks: Rebuild the list's translators when its sample rate changes
+
+The audiohook list of a channel converts the frames it is given to signed
+linear at the list's internal sample rate, and back, through two cached
+translation paths. The paths were rebuilt only when the frame's format
+changed, not when the rate did. The rate rises to 16 kHz while a spied
+channel sits in a mixing bridge with a 16 kHz channel, and is reset to
+8 kHz by every attach and removal of an audiohook; after such a reset the
+cached path kept producing 16 kHz frames while the list and its hooks
+believed in 8 kHz. Whisper audio from a Snoop channel was then taken from
+an 8 kHz factory in 16 kHz portions: present in every other frame and at
+double speed, which for a tone is not heard at all. Observed on Asterisk
+22.11.0 when a whispering Snoop was removed and created again on a channel
+whose recording Snoop (spy) kept the audiohook list alive in between.
+
+A path now remembers the slin format it was built for, and is rebuilt when
+either end changes; the list's destructor releases that format.
+
+Not in Asterisk as of 22.12.0-rc2: branch 22 and master rebuild the path on
+a format change only. Written for the Gabion telephony node.
+---
+--- a/main/audiohook.c
++++ b/main/audiohook.c
+@@ -59,6 +59,8 @@
+ struct ast_audiohook_translate {
+ 	struct ast_trans_pvt *trans_pvt;
+ 	struct ast_format *format;
++	/*! The slin format at the other end of the path: the list's rate when it was built. */
++	struct ast_format *slin;
+ };
+ 
+ struct whisper_framehook_data {
+@@ -863,10 +865,12 @@
+ 		if (audiohook_list->in_translate[i].trans_pvt) {
+ 			ast_translator_free_path(audiohook_list->in_translate[i].trans_pvt);
+ 			ao2_cleanup(audiohook_list->in_translate[i].format);
++			ao2_cleanup(audiohook_list->in_translate[i].slin);
+ 		}
+ 		if (audiohook_list->out_translate[i].trans_pvt) {
+ 			ast_translator_free_path(audiohook_list->out_translate[i].trans_pvt);
+ 			ao2_cleanup(audiohook_list->out_translate[i].format);
++			ao2_cleanup(audiohook_list->out_translate[i].slin);
+ 		}
+ 	}
+ 
+@@ -1085,7 +1089,9 @@
+ 	}
+ 
+ 	if (!in_translate->format ||
+-		ast_format_cmp(frame->subclass.format, in_translate->format) != AST_FORMAT_CMP_EQUAL) {
++		ast_format_cmp(frame->subclass.format, in_translate->format) != AST_FORMAT_CMP_EQUAL ||
++		!in_translate->slin ||
++		ast_format_cmp(slin, in_translate->slin) != AST_FORMAT_CMP_EQUAL) {
+ 		struct ast_trans_pvt *new_trans;
+ 
+ 		new_trans = ast_translator_build_path(slin, frame->subclass.format);
+@@ -1099,6 +1105,7 @@
+ 		in_translate->trans_pvt = new_trans;
+ 
+ 		ao2_replace(in_translate->format, frame->subclass.format);
++		ao2_replace(in_translate->slin, slin);
+ 	}
+ 
+ 	if (!(new_frame = ast_translate(in_translate->trans_pvt, frame, 0))) {
+@@ -1115,7 +1122,9 @@
+ 	struct ast_frame *outframe = NULL;
+ 	if (ast_format_cmp(slin_frame->subclass.format, outformat) == AST_FORMAT_CMP_NOT_EQUAL) {
+ 		/* rebuild translators if necessary */
+-		if (ast_format_cmp(out_translate->format, outformat) == AST_FORMAT_CMP_NOT_EQUAL) {
++		if (ast_format_cmp(out_translate->format, outformat) == AST_FORMAT_CMP_NOT_EQUAL
++			|| !out_translate->slin
++			|| ast_format_cmp(out_translate->slin, slin_frame->subclass.format) == AST_FORMAT_CMP_NOT_EQUAL) {
+ 			if (out_translate->trans_pvt) {
+ 				ast_translator_free_path(out_translate->trans_pvt);
+ 			}
+@@ -1123,6 +1132,7 @@
+ 				return NULL;
+ 			}
+ 			ao2_replace(out_translate->format, outformat);
++			ao2_replace(out_translate->slin, slin_frame->subclass.format);
+ 		}
+ 		/* translate back to the format the frame came in as. */
+ 		if (!(outframe = ast_translate(out_translate->trans_pvt, slin_frame, 0))) {

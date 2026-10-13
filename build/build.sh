@@ -156,6 +156,20 @@ cd "asterisk-${ASTERISK_VERSION}"
 # shellcheck source=/dev/null
 . third-party/versions.mak
 
+echo "=== Source patches ==="
+# The patches in build/patches, applied in name order, are fixes the node
+# needs that this Asterisk release does not have; the header of each says
+# where it comes from and what it fixes. A patch that does not apply cleanly
+# stops the build: a newer Asterisk may already carry the fix, or may have
+# changed the code it touches — either way the patch is reviewed, not
+# skipped. Only options POSIX patch(1) has are used: macOS ships Apple's own
+# patch, not GNU's. Every applied patch is recorded in BUILD-INFO.txt with
+# its checksum.
+while IFS= read -r file; do
+  echo "--- $(basename "${file}")"
+  patch -p1 -N -i "${file}" < /dev/null
+done < <(find "${HERE}/patches" -name '*.patch' | sort)
+
 echo "=== Configure ==="
 # pjproject and jansson are built from the versions Asterisk pins, so the SIP
 # stack matches what this Asterisk release was tested with. The XML
@@ -370,6 +384,10 @@ sha256_of() {
   echo "pjproject-sha256: $(sha256_of "${EXTERNALS}/${PJPROJECT_TARBALL}")"
   echo "jansson-version: ${JANSSON_VERSION} (bundled by Asterisk)"
   echo "jansson-sha256: $(sha256_of "${EXTERNALS}/${JANSSON_TARBALL}")"
+  echo "source-patches:"
+  while IFS= read -r file; do
+    echo "  - $(basename "${file}") sha256 $(sha256_of "${file}")"
+  done < <(find "${HERE}/patches" -name '*.patch' | sort)
   echo "libsrtp-version: ${LIBSRTP_VERSION} (OpenSSL backend)"
   echo "libsrtp-sha256: ${LIBSRTP_SHA256}"
   echo "built-on: $(. /etc/os-release && echo "${PRETTY_NAME}")"

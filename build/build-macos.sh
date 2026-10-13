@@ -139,10 +139,25 @@ cd "asterisk-${ASTERISK_VERSION}"
 # shellcheck source=/dev/null
 . third-party/versions.mak
 
+echo "=== Source patches ==="
+# The patches in build/patches, applied in name order, are fixes the node
+# needs that this Asterisk release does not have; the header of each says
+# where it comes from and what it fixes. A patch that does not apply cleanly
+# stops the build: a newer Asterisk may already carry the fix, or may have
+# changed the code it touches — either way the patch is reviewed, not
+# skipped. Only options POSIX patch(1) has are used: macOS ships Apple's own
+# patch, not GNU's. Every applied patch is recorded in BUILD-INFO.txt with
+# its checksum.
+while IFS= read -r file; do
+  echo "--- $(basename "${file}")"
+  patch -p1 -N -i "${file}" < /dev/null
+done < <(find "${HERE}/patches" -name '*.patch' | sort)
+
 echo "=== Build-file edits for current macOS ==="
-# The only changes made to the Asterisk source tree. All of them are in build
-# files; no line of C is touched. Each edit stops the build if the text it
-# expects is gone, so a new Asterisk version cannot silently skip one.
+# Besides the patches above, these are the only changes made to the Asterisk
+# source tree. All of them are in build files; no line of C is touched here.
+# Each edit stops the build if the text it expects is gone, so a new Asterisk
+# version cannot silently skip one.
 #
 # 1. Asterisk asks the compiler for macOS 10.6 as the oldest supported
 #    system, a target the current toolchain no longer accepts as written. It
@@ -397,6 +412,10 @@ sha256_of() {
   echo "pjproject-sha256: $(sha256_of "${EXTERNALS}/${PJPROJECT_TARBALL}")"
   echo "jansson-version: ${JANSSON_VERSION} (bundled by Asterisk)"
   echo "jansson-sha256: $(sha256_of "${EXTERNALS}/${JANSSON_TARBALL}")"
+  echo "source-patches:"
+  while IFS= read -r file; do
+    echo "  - $(basename "${file}") sha256 $(sha256_of "${file}")"
+  done < <(find "${HERE}/patches" -name '*.patch' | sort)
   echo "source-edits:"
   echo "  - Makefile, main/Makefile: -mmacosx-version-min=10.6 replaced with ${MACOSX_DEPLOYMENT_TARGET}"
   echo "  - main/Makefile: literal '${PJ_TARGET_LITERAL}' replaced with 'PJ_TARGET := \$(TARGET_NAME)'"

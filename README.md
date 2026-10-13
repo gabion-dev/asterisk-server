@@ -243,11 +243,36 @@ checked against the checksum published next to it, by the scripts in
 [`build/`](build/) at the release tag. `BUILD-INFO.txt` names the tarball and
 its SHA-256.
 
-- **Linux:** the Asterisk source is used unmodified.
-- **macOS:** two edits to Asterisk's build files (`Makefile`,
+- **Both platforms:** the patches in [`build/patches/`](build/patches/) are
+  applied to the Asterisk source (see [Patches](#patches)).
+- **macOS:** additionally two edits to Asterisk's build files (`Makefile`,
   `main/Makefile`) and two added compiler flags,
-  `-DTCP_KEEPIDLE=TCP_KEEPALIVE -Wno-macro-redefined`; no C file is edited.
+  `-DTCP_KEEPIDLE=TCP_KEEPALIVE -Wno-macro-redefined`.
   `BUILD-INFO.txt` lists each of them.
+
+### Patches
+
+Since revision `r3`, the recipe applies the patches in
+[`build/patches/`](build/patches/) to the Asterisk source, on both platforms
+and in name order, with `patch -p1 -N`. The header of each patch says what
+it fixes and where it comes from; `BUILD-INFO.txt` lists every applied patch
+under `source-patches:` with its SHA-256. A patch that does not apply cleanly
+stops the build. For Asterisk 22.11.0 there are two, both to
+`main/audiohook.c`:
+
+- `0001-audiohooks-whisper-framehook-timer-upstream-2184.patch` — the
+  Asterisk project's own fix
+  [asterisk/asterisk#2184](https://github.com/asterisk/asterisk/pull/2184)
+  for the whisper timer of audiohooks added in 22.11.0; it is part of
+  Asterisk from 22.12.0-rc2 on.
+- `0002-audiohooks-translators-follow-the-list-rate.patch` — rebuilds the
+  translation paths of a channel's audiohook list when the list's sample
+  rate changes, not only when the frame format does; without it, whisper
+  audio into a channel can stop being heard after a whispering Snoop channel
+  is removed and created again while another audiohook keeps the list alive.
+  Not part of Asterisk as of 22.12.0-rc2.
+
+`22.11.0-r1` and `22.11.0-r2` were built from the unmodified source.
 
 Other sources that go into an archive:
 

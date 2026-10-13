@@ -292,7 +292,7 @@ jobs:
             Linux needs a glibc that provides the symbol version named by `requires-glibc-symbol-version` in `BUILD-INFO.txt`. Not covered: musl (Alpine). Asterisk does not exist for Windows; under Windows it runs inside WSL 2.
 
             ## Source
-            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build makes two edits to build files, adds two compiler flags, and edits no C code. `BUILD-INFO.txt` inside each archive records the checksum of every source, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
+            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. Both builds apply the source patches in `build/patches/` (the header of each says what it fixes and where it comes from); the macOS build also makes two edits to build files and adds two compiler flags. `BUILD-INFO.txt` inside each archive records the checksum of every source and of every applied patch, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
 
             `asterisk-server-sources.tar` holds the source of everything in the four archives: the Asterisk tarball, the pjproject and jansson tarballs it bundles, libsrtp, OpenSSL (macOS), and the AlmaLinux source package of every bundled Linux system library.
 
