@@ -16,8 +16,8 @@ the Asterisk project.
 
 ## Releases
 
-A release tag is `<asterisk-version>-r<revision>`, for example `22.11.0-r1`:
-Asterisk 22.11.0, revision 1 of this recipe for it. Each release has four
+A release tag is `<asterisk-version>-r<revision>`, for example `22.11.0-r2`:
+Asterisk 22.11.0, revision 2 of this recipe for it. Each release has four
 archives, each with a `.sha256` file next to it:
 
 - `asterisk-server-linux-amd64.tar.gz` — Linux, x86-64
@@ -33,7 +33,7 @@ the current recipe also carry `asterisk-server-sources.tar` with its
 ## Download and check
 
 ```sh
-TAG=22.11.0-r1
+TAG=22.11.0-r2
 ARCHIVE=asterisk-server-linux-amd64.tar.gz
 BASE="https://github.com/gabion-dev/asterisk-server/releases/download/${TAG}"
 curl -fLO "${BASE}/${ARCHIVE}"
@@ -109,14 +109,18 @@ family, on macOS OpenSSL, libsrtp and Asterisk's own `libasteriskpj` and
 fully booted, and every module of the required list was `Running` — the check
 [`build/verify.sh`](build/verify.sh) makes.
 
-For `22.11.0-r1`:
+For `22.11.0-r2`:
 
-- **Linux x86-64 and ARM64** — AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04,
-  Debian 12 and Fedora (containers of the stock images, GitHub Actions,
-  5 October 2026); Ubuntu 26.04 LTS x86-64 directly on a host, as an
-  ordinary user;
-- **macOS** — 14.8.9, 15.7.9 and 26.6.2 on Apple Silicon; 15.7.9 and 26.6.1
-  on Intel (GitHub Actions, 5 October 2026), as the machine's ordinary user.
+- **Linux x86-64 and ARM64** — AlmaLinux 9 and 10, Ubuntu 22.04, 24.04 and
+  26.04, Debian 12 and 13, and Fedora (containers of the stock images,
+  GitHub Actions, 13 October 2026);
+- **macOS** — 14.8.9, 15.7.9, 26.6.2 and 27.0.1 on Apple Silicon; 15.7.9
+  and 26.6.1 on Intel (GitHub Actions, 13 October 2026), as the machine's
+  ordinary user.
+
+For `22.11.0-r1` (5 October 2026): Linux in the same containers except
+AlmaLinux 10, Ubuntu 26.04 and Debian 13, plus Ubuntu 26.04 LTS x86-64
+directly on a host; macOS as above except 27.
 
 **Not built:** Linux with musl libc (Alpine Linux is built around musl),
 Windows, BSD.

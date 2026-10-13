@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Published release to verify (e.g. 22.11.0-r1)'
+        description: 'Published release to verify (e.g. 22.11.0-r2)'
         required: true
-        default: '22.11.0-r1'
+        default: '22.11.0-r2'
 
 permissions:
   contents: read
