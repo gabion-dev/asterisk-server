@@ -24,8 +24,8 @@ permissions:
 # workflow checks the very bytes that are published instead.
 #
 # The verification itself is build/verify.sh, the same script the build
-# runs: Asterisk is started from the tree and every required module has to
-# be running.
+# runs: Asterisk is started from the tree with every module of the tree, and
+# every one of them has to be running.
 #
 # Keep the lists below equal to the ones in build.yml, and put a new system
 # here as soon as a runner or an image for it exists.

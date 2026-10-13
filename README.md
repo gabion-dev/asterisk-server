@@ -105,9 +105,9 @@ family, on macOS OpenSSL, libsrtp and Asterisk's own `libasteriskpj` and
 
 ## Where it has run
 
-"Ran" below means: Asterisk was started from the tree, reported that it had
-fully booted, and every module of the required list was `Running` — the check
-[`build/verify.sh`](build/verify.sh) makes.
+"Ran" below means: Asterisk was started from the tree with every module of
+the tree, reported that it had fully booted, and every one of those modules
+was `Running` — the check [`build/verify.sh`](build/verify.sh) makes.
 
 For `22.11.0-r2`:
 

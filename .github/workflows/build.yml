@@ -39,7 +39,7 @@ permissions:
 # libsrtp are built from pinned source, everything else comes from macOS.
 #
 # Every architecture builds on a NATIVE runner (no emulation): the
-# verification boots Asterisk and loads every required module, and a verdict
+# verification boots Asterisk and loads every module of the tree, and a verdict
 # obtained under emulation says nothing about real hardware.
 #
 # A release is published only when every platform built and verified: a
@@ -250,7 +250,7 @@ jobs:
           body: |
             Relocatable Asterisk `${{ github.event.inputs.asterisk_version }}` for Linux and macOS: the server, its modules, and every shared library they need that the platform does not provide. Runs from any directory, with no root and nothing installed.
 
-            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9 and 10, Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora. macOS: 14, 15, 26 and 27 on Apple Silicon, 15 and 26 on Intel, each on a machine other than the one that built the tree.
+            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree with every module of the tree (`BUILD-INFO.txt`), and every one of them had to be running. Linux: AlmaLinux 9 and 10, Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora. macOS: 14, 15, 26 and 27 on Apple Silicon, 15 and 26 on Intel, each on a machine other than the one that built the tree.
 
             ## Platforms
             - `asterisk-server-linux-amd64.tar.gz` — Linux x64

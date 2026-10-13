@@ -1,10 +1,13 @@
 # build/required-modules.txt
-# Modules the Gabion telephony node loads. The build fails if any of them is
-# missing from the tree, and the verification boots Asterisk with exactly this
-# list and fails if any of them is not running.
+# Modules the Gabion telephony node needs. The build fails if any of them is
+# missing from the tree, and the verification fails if any of them is not
+# among the modules of the tree.
 #
-# One module per line, without the .so suffix. Dependencies of these modules
-# are loaded by Asterisk itself and are not listed.
+# One module per line, without the .so suffix. Modules these depend on are
+# built with them and are not listed; the tree's build record lists every
+# module of the tree, and that full list is what a node and the verification
+# load — with autoload off Asterisk loads no module that is not listed, so a
+# module whose dependency is not loaded declines.
 #
 # Modules that exist on one platform only live in required-modules.linux.txt
 # and required-modules.macos.txt; both scripts read this file plus the one
