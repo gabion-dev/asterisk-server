@@ -48,7 +48,37 @@ permissions:
 # =============================================================================
 
 jobs:
+  # A published release is pinned elsewhere by the checksums of its archives,
+  # and the release step uploads into an existing tag, replacing files of the
+  # same name: building a revision that is already released would swap the
+  # pinned bytes. Checking a published release on more systems is
+  # verify-release.yml; a changed recipe is a new revision.
+  revision:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: The revision is not released yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.asterisk_version }}-r${{ github.event.inputs.revision }}
+        run: |
+          set -euo pipefail
+          STATUS="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}")"
+          case "${STATUS}" in
+            404) echo "${RELEASE_TAG} has no release yet" ;;
+            200)
+              echo "ERROR: ${RELEASE_TAG} is already released; its archives are pinned by" \
+                "checksum and are never rebuilt. Raise the revision for a changed recipe," \
+                "or run verify-release.yml to check the published release." >&2
+              exit 1 ;;
+            *)
+              echo "ERROR: could not tell whether ${RELEASE_TAG} is released (HTTP ${STATUS})" >&2
+              exit 1 ;;
+          esac
+
   build-linux:
+    needs: [revision]
     strategy:
       fail-fast: false
       matrix:
@@ -112,6 +142,7 @@ jobs:
           path: out/sources/
 
   build-macos:
+    needs: [revision]
     strategy:
       fail-fast: false
       matrix:
