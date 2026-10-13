@@ -75,13 +75,17 @@ own file —
 [`required-modules.linux.txt`](build/required-modules.linux.txt)
 (`res_timing_timerfd`) or
 [`required-modules.macos.txt`](build/required-modules.macos.txt)
-(`res_timing_pthread`) — and the modules they depend on. In `22.11.0-r1` that
-is 58 modules: the 56 listed, `res_ari_model` and `res_pjsip_pubsub`. They
+(`res_timing_pthread`) — and the modules they depend on. In `22.11.0-r2` that
+is 62 modules: the 60 listed, `res_ari_model` and `res_pjsip_pubsub`. They
 cover ARI, WebSocket (`chan_websocket`, `res_websocket_client`), PJSIP, RTP
-with SRTP, bridging, the G.711 codecs, and the dialplan applications Dial,
-Playback, Record and MixMonitor. Every other module is left out, among them
-voicemail (`app_voicemail`), conferencing (`app_confbridge`), queues
-(`app_queue`) and every CDR backend.
+with SRTP, bridging and the recording of a bridge (`chan_bridge_media`), the
+G.711 codecs, the dialplan applications Dial, Playback, Record and
+MixMonitor, the cause of a failed call from the `Reason` header of the
+operator's answer (`res_pjsip_rfc3326`), channel groups (`func_groupcount`)
+and call records in CSV (`cdr_csv`). `22.11.0-r2` added the last four. Every
+other module is left out, among them voicemail (`app_voicemail`),
+conferencing (`app_confbridge`), queues (`app_queue`) and every other CDR
+backend.
 
 **Bundled libraries.** The shared libraries the server and its modules need
 beyond what the platform provides: on Linux everything except the glibc

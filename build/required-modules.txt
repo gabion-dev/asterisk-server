@@ -46,6 +46,9 @@ res_pjsip_registrar
 res_pjsip_nat
 res_pjsip_caller_id
 res_pjsip_dtmf_info
+# Reads the Q.850 cause from the Reason header of an operator's answer, so a
+# failed dial reports the network's own cause.
+res_pjsip_rfc3326
 chan_pjsip
 
 # --- Media: RTP, encryption for WebRTC, bridging, codecs ---
@@ -59,6 +62,8 @@ bridge_holding
 codec_ulaw
 codec_alaw
 codec_resample
+# The Recorder channel: a bridge is recorded through it.
+chan_bridge_media
 
 # --- Dialplan: entry into the application and the fallback scenarios ---
 pbx_config
@@ -68,9 +73,15 @@ app_record
 app_mixmonitor
 func_callerid
 func_channel
+# Line occupancy counted by channel groups, for transfers made without the
+# controller.
+func_groupcount
 format_wav
 format_pcm
 format_sln
+
+# --- Call records: calls Asterisk handled without the controller ---
+cdr_csv
 
 # --- Configuration storage ---
 res_sorcery_config
