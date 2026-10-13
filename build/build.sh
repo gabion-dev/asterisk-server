@@ -2,14 +2,19 @@
 # build/build.sh
 #
 # Builds Asterisk for Linux into a relocatable tree that carries every shared
-# library it needs except the glibc family. Runs as root inside the
-# glibc-floor container (AlmaLinux 9); the workflow and a local run call it
-# the same way (the macOS counterpart is build-macos.sh):
+# library it needs except the glibc family. Runs as root inside an AlmaLinux 9
+# container; the workflow and a local run call it the same way (the macOS
+# counterpart is build-macos.sh):
 #
 #   build/build.sh <asterisk-version> <output-dir>
 #
-# Result: <output-dir>/tree — the tree that goes into the release archive.
+# Result: <output-dir>/tree — the tree that goes into the release archive;
+# <output-dir>/sources — the source of everything in the tree, published
+# next to the archives.
 set -euo pipefail
+# A failing command inside $(…) stops the build too, not only the command
+# around it.
+shopt -s inherit_errexit
 
 ASTERISK_VERSION="${1:?usage: build.sh <asterisk-version> <output-dir>}"
 OUT="${2:?usage: build.sh <asterisk-version> <output-dir>}"
@@ -27,6 +32,10 @@ PREFIX=/opt/asterisk-server
 WORK=/tmp/asterisk-build
 STAGE="${WORK}/stage"
 TREE="${OUT}/tree"
+SOURCES="${OUT}/sources"
+# The Asterisk build downloads pjproject and jansson itself, into this
+# directory; the tarballs are recorded and shipped from here.
+EXTERNALS="${WORK}/externals"
 
 DOWNLOAD_BASE="https://downloads.asterisk.org/pub/telephony/asterisk/releases"
 TARBALL="asterisk-${ASTERISK_VERSION}.tar.gz"
@@ -41,6 +50,7 @@ TARBALL="asterisk-${ASTERISK_VERSION}.tar.gz"
 LIBSRTP_VERSION="2.8.1"
 LIBSRTP_SHA256="ef5569220749529d778013aae1178391d972570a2b4f7288dda22effa875b07c"
 LIBSRTP_URL="https://github.com/cisco/libsrtp/archive/refs/tags/v${LIBSRTP_VERSION}.tar.gz"
+LIBSRTP_TARBALL="libsrtp-${LIBSRTP_VERSION}.tar.gz"
 LIBSRTP_PREFIX=/opt/libsrtp
 
 required_modules() {
@@ -48,7 +58,69 @@ required_modules() {
     | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$'
 }
 
+# Every ELF file of the tree, one per line.
+elf_files() {
+  find "${TREE}/sbin" "${TREE}/lib" -type f \
+    \( -name 'asterisk' -o -name '*.so' -o -name '*.so.*' \)
+}
+
+# The license files an installed package ships, one per line.
+package_license_files() {
+  rpm -q --licensefiles "$1" | while IFS= read -r file; do
+    if [ -f "${file}" ]; then
+      echo "${file}"
+    fi
+  done
+}
+
+# Copies the license texts of a bundled system package into the tree and
+# prints what PACKAGES.txt should add about where they came from. A package
+# that ships no texts takes them from an installed package built from the
+# same source package: the texts cover the whole source package, and the
+# distribution puts them into one of its binary packages (libstdc++ has
+# them in libgcc, ncurses-libs in ncurses-base). A package with no text
+# anywhere is accepted only when it is in the public domain — there is no
+# text to ship. Anything else stops the build: it could not be attributed.
+bundle_license_texts() {
+  local package="$1" source_package texts from sibling
+  from="${package}"
+  texts="$(package_license_files "${package}")"
+  if [ -z "${texts}" ]; then
+    source_package="$(rpm -q --queryformat '%{SOURCERPM}' "${package}")"
+    while read -r sibling; do
+      texts="$(package_license_files "${sibling}")"
+      if [ -n "${texts}" ]; then
+        from="${sibling}"
+        break
+      fi
+    done < <(
+      rpm -qa --queryformat '%{NAME} %{SOURCERPM}\n' \
+        | awk -v source="${source_package}" '$2 == source {print $1}' | sort
+    )
+  fi
+  if [ -z "${texts}" ]; then
+    if [ "$(rpm -q --queryformat '%{LICENSE}' "${package}")" = "Public Domain" ]; then
+      echo "; public domain, no license text"
+      return
+    fi
+    echo "ERROR: no license text for ${package} or its source package" >&2
+    exit 1
+  fi
+  mkdir -p "${TREE}/LICENSES/bundled/${package}"
+  while IFS= read -r file; do
+    cp "${file}" "${TREE}/LICENSES/bundled/${package}/"
+  done <<<"${texts}"
+  if [ "${from}" != "${package}" ]; then
+    echo "; license texts from ${from}, built from the same source package"
+  fi
+}
+
 echo "=== Build dependencies ==="
+# The container image is as old as its last rebuild; upgrading it first makes
+# the bundled libraries those of the build day, and makes every installed
+# package one the repositories still offer — its source package is
+# downloaded by exact version below.
+dnf -y upgrade
 dnf -y install dnf-plugins-core
 dnf config-manager --set-enabled crb
 dnf -y install \
@@ -56,14 +128,14 @@ dnf -y install \
   pkgconf-pkg-config \
   libedit-devel libuuid-devel libxml2-devel sqlite-devel openssl-devel
 
-rm -rf "${WORK}"
-mkdir -p "${WORK}"
+rm -rf "${WORK}" "${SOURCES}"
+mkdir -p "${WORK}" "${EXTERNALS}" "${SOURCES}"
 
 echo "=== libsrtp ${LIBSRTP_VERSION} (OpenSSL backend) ==="
 cd "${WORK}"
-wget --no-verbose -O "libsrtp-${LIBSRTP_VERSION}.tar.gz" "${LIBSRTP_URL}"
-echo "${LIBSRTP_SHA256}  libsrtp-${LIBSRTP_VERSION}.tar.gz" | sha256sum --check
-tar -xzf "libsrtp-${LIBSRTP_VERSION}.tar.gz"
+wget --no-verbose -O "${LIBSRTP_TARBALL}" "${LIBSRTP_URL}"
+echo "${LIBSRTP_SHA256}  ${LIBSRTP_TARBALL}" | sha256sum --check
+tar -xzf "${LIBSRTP_TARBALL}"
 (
   cd "libsrtp-${LIBSRTP_VERSION}"
   ./configure --prefix="${LIBSRTP_PREFIX}" --enable-openssl
@@ -79,16 +151,29 @@ wget --no-verbose "${DOWNLOAD_BASE}/asterisk-${ASTERISK_VERSION}.sha256"
 sha256sum --check "asterisk-${ASTERISK_VERSION}.sha256"
 tar -xzf "${TARBALL}"
 cd "asterisk-${ASTERISK_VERSION}"
+# The versions of pjproject and jansson this Asterisk release pins; the file
+# is written to be read by the shell.
+# shellcheck source=/dev/null
+. third-party/versions.mak
 
 echo "=== Configure ==="
 # pjproject and jansson are built from the versions Asterisk pins, so the SIP
 # stack matches what this Asterisk release was tested with. The XML
 # documentation is not built: nothing reads it on a node.
+#
+# --disable-rpath: with a prefix other than /usr, configure writes the
+# library directory of the prefix into every binary it links, as DT_RPATH.
+# The loader searches DT_RPATH before LD_LIBRARY_PATH, so on a host where
+# that directory exists the tree would load the libraries found there. The
+# tree finds its libraries through LD_LIBRARY_PATH only; a guard below stops
+# the build if any search path is left in a file.
 ./configure \
   --prefix="${PREFIX}" \
   --with-pjproject-bundled \
   --with-jansson-bundled \
   --with-srtp="${LIBSRTP_PREFIX}" \
+  --with-externals-cache="${EXTERNALS}" \
+  --disable-rpath \
   --disable-xmldoc
 
 echo "=== Module selection ==="
@@ -124,6 +209,16 @@ make -j"$(nproc)"
 rm -rf "${STAGE}"
 make install DESTDIR="${STAGE}"
 
+PJPROJECT_TARBALL="pjproject-${PJPROJECT_VERSION}.tar.bz2"
+JANSSON_TARBALL="jansson-${JANSSON_VERSION}.tar.bz2"
+for tarball in "${PJPROJECT_TARBALL}" "${JANSSON_TARBALL}"; do
+  if [ ! -f "${EXTERNALS}/${tarball}" ]; then
+    echo "ERROR: the Asterisk build did not leave ${tarball} in ${EXTERNALS}" >&2
+    echo "Its source could not be recorded and shipped." >&2
+    exit 1
+  fi
+done
+
 echo "=== Assemble the tree ==="
 rm -rf "${TREE}"
 mkdir -p "${TREE}"
@@ -153,13 +248,14 @@ echo "=== Bundle shared libraries ==="
 # with the host loader does not work. The libraries come from the supported
 # base system of this container, so they carry its security patches as of
 # the build day.
+#
+# Asterisk's own libasteriskpj and libasteriskssl are already in the tree;
+# pjproject and jansson are recorded below, with the Asterisk source.
 mkdir -p "${TREE}/LICENSES/bundled"
 : > "${TREE}/LICENSES/bundled/PACKAGES.txt"
+: > "${WORK}/bundled-packages.txt"
 export LD_LIBRARY_PATH="${TREE}/lib:${LIBSRTP_PREFIX}/lib"
-mapfile -t ELF_FILES < <(
-  find "${TREE}/sbin" "${TREE}/lib" -type f \
-    \( -name 'asterisk' -o -name '*.so' -o -name '*.so.*' \)
-)
+mapfile -t ELF_FILES < <(elf_files)
 LDD_OUTPUT="$(ldd "${ELF_FILES[@]}" 2>&1 || true)"
 if grep -q 'not found' <<<"${LDD_OUTPUT}"; then
   echo "ERROR: unresolved shared libraries:" >&2
@@ -188,17 +284,13 @@ awk '/=> \// {print $3}' <<<"${LDD_OUTPUT}" | sort -u | while read -r lib; do
           ;;
         *)
           # Every bundled system library is recorded with its package,
-          # version and license; license texts are copied where the package
-          # ships them. A library no package owns stops the build: it could
-          # not be attributed.
+          # version and license, and with the license texts. A library no
+          # package owns stops the build: it could not be attributed.
           pkg="$(rpm -qf --queryformat '%{NAME}' "${real}")"
-          echo "${base}: $(rpm -q --queryformat '%{NAME} %{VERSION}-%{RELEASE} (%{LICENSE})' "${pkg}")" \
+          note="$(bundle_license_texts "${pkg}")"
+          echo "${base}: $(rpm -q --queryformat '%{NAME} %{VERSION}-%{RELEASE} (%{LICENSE})' "${pkg}")${note}" \
             >> "${TREE}/LICENSES/bundled/PACKAGES.txt"
-          while read -r license_file; do
-            [ -f "${license_file}" ] || continue
-            mkdir -p "${TREE}/LICENSES/bundled/${pkg}"
-            cp "${license_file}" "${TREE}/LICENSES/bundled/${pkg}/"
-          done < <(rpm -q --licensefiles "${pkg}")
+          rpm -q "${pkg}" >> "${WORK}/bundled-packages.txt"
           ;;
       esac
       ;;
@@ -206,25 +298,87 @@ awk '/=> \// {print $3}' <<<"${LDD_OUTPUT}" | sort -u | while read -r lib; do
 done
 unset LD_LIBRARY_PATH
 
+echo "=== Guard: no library search path is written into the tree ==="
+# The tree finds its libraries through LD_LIBRARY_PATH only. A DT_RPATH or
+# DT_RUNPATH left in any file — Asterisk's own or a bundled one — names a
+# directory that the loader searches on every host where it exists.
+search_paths=0
+while IFS= read -r file; do
+  if readelf -d "${file}" | grep -E '\((RPATH|RUNPATH)\)'; then
+    echo "ERROR: ${file} carries a library search path" >&2
+    search_paths=1
+  fi
+done < <(elf_files)
+if [ "${search_paths}" -ne 0 ]; then
+  exit 1
+fi
+
 echo "=== Strip debug information ==="
-find "${TREE}/sbin" "${TREE}/lib" -type f \
-  \( -name 'asterisk' -o -name '*.so' -o -name '*.so.*' \) \
-  -exec strip --strip-unneeded {} +
+elf_files | xargs strip --strip-unneeded
+
+# The newest glibc symbol version any file of the tree requires: the real
+# floor for a host. It is read from the files (readelf -V), not from the
+# glibc of the build system — a bundled library can require a newer one than
+# the build system's version number suggests (the glibc 2.34 of AlmaLinux 9
+# provides some 2.35 symbols).
+GLIBC_REQUIRED="$(
+  elf_files | xargs readelf -V --wide \
+    | grep -oE 'Name: GLIBC_[0-9]+(\.[0-9]+)+' | awk '{print $2}' \
+    | sort -V | tail -n 1
+)"
+if [ -z "${GLIBC_REQUIRED}" ]; then
+  echo "ERROR: no glibc symbol version found in the tree" >&2
+  exit 1
+fi
+
+echo "=== Sources ==="
+# The source of everything in the tree goes out with the archives: Asterisk,
+# the pjproject and jansson it bundles, libsrtp, and the source package of
+# every bundled system library — downloaded by exact version from the
+# distribution's source repositories.
+cp "${WORK}/${TARBALL}" "${WORK}/${LIBSRTP_TARBALL}" "${SOURCES}/"
+cp "${EXTERNALS}/${PJPROJECT_TARBALL}" "${EXTERNALS}/${JANSSON_TARBALL}" "${SOURCES}/"
+mapfile -t BUNDLED_PACKAGES < <(sort -u "${WORK}/bundled-packages.txt")
+dnf download --source --destdir "${SOURCES}" "${BUNDLED_PACKAGES[@]}"
+for package in "${BUNDLED_PACKAGES[@]}"; do
+  source_package="$(rpm -q --queryformat '%{SOURCERPM}' "${package}")"
+  if [ ! -f "${SOURCES}/${source_package}" ]; then
+    echo "ERROR: source package ${source_package} of ${package} was not downloaded" >&2
+    exit 1
+  fi
+done
 
 echo "=== Licenses and build record ==="
 cp COPYING "${TREE}/LICENSES/asterisk-COPYING"
 cp LICENSE "${TREE}/LICENSES/asterisk-LICENSE"
+mkdir -p "${TREE}/LICENSES/bundled/pjproject" "${TREE}/LICENSES/bundled/jansson"
+cp third-party/pjproject/source/COPYING "${TREE}/LICENSES/bundled/pjproject/"
+cp third-party/jansson/source/LICENSE "${TREE}/LICENSES/bundled/jansson/"
+PJPROJECT_LIBRARY="$(cd "${TREE}/lib" && ls libasteriskpj.so.*)"
+{
+  echo "${PJPROJECT_LIBRARY}: pjproject ${PJPROJECT_VERSION} (GPL-2.0-or-later), bundled by Asterisk"
+  echo "asterisk: jansson ${JANSSON_VERSION} (MIT), bundled by Asterisk and linked statically"
+} >> "${TREE}/LICENSES/bundled/PACKAGES.txt"
+sha256_of() {
+  sha256sum "$1" | cut -d' ' -f1
+}
 {
   echo "asterisk-version: ${ASTERISK_VERSION}"
   echo "source: ${DOWNLOAD_BASE}/${TARBALL}"
-  echo "source-sha256: $(sha256sum "${WORK}/${TARBALL}" | cut -d' ' -f1)"
+  echo "source-sha256: $(sha256_of "${WORK}/${TARBALL}")"
+  echo "pjproject-version: ${PJPROJECT_VERSION} (bundled by Asterisk)"
+  echo "pjproject-sha256: $(sha256_of "${EXTERNALS}/${PJPROJECT_TARBALL}")"
+  echo "jansson-version: ${JANSSON_VERSION} (bundled by Asterisk)"
+  echo "jansson-sha256: $(sha256_of "${EXTERNALS}/${JANSSON_TARBALL}")"
   echo "libsrtp-version: ${LIBSRTP_VERSION} (OpenSSL backend)"
+  echo "libsrtp-sha256: ${LIBSRTP_SHA256}"
   echo "built-on: $(. /etc/os-release && echo "${PRETTY_NAME}")"
-  echo "glibc-floor: $(ldd --version | head -n1 | awk '{print $NF}')"
+  echo "built-on-glibc: $(ldd --version | head -n1 | awk '{print $NF}')"
+  echo "requires-glibc-symbol-version: ${GLIBC_REQUIRED}"
   echo "architecture: $(uname -m)"
   echo "modules:"
   find "${MODULES_DIR}" -name '*.so' -printf '  %f\n' | sort
 } > "${TREE}/BUILD-INFO.txt"
 
 echo "=== Done ==="
-du -sh "${TREE}"
+du -sh "${TREE}" "${SOURCES}"

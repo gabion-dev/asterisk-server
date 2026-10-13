@@ -7,7 +7,9 @@
 #
 #   build/build-macos.sh <asterisk-version> <output-dir>
 #
-# Result: <output-dir>/tree — the tree that goes into the release archive.
+# Result: <output-dir>/tree — the tree that goes into the release archive;
+# <output-dir>/sources — the source of everything in the tree, published
+# next to the archives.
 #
 # Written for the bash 3.2 that macOS ships. The Linux counterpart is
 # build.sh; the two differ where the platforms differ:
@@ -44,6 +46,10 @@ WORK="$(mktemp -d)"
 DEPS="${WORK}/deps"
 STAGE="${WORK}/stage"
 TREE="${OUT}/tree"
+SOURCES="${OUT}/sources"
+# The Asterisk build downloads pjproject and jansson itself, into this
+# directory; the tarballs are recorded and shipped from here.
+EXTERNALS="${WORK}/externals"
 CPUS="$(sysctl -n hw.ncpu)"
 
 DOWNLOAD_BASE="https://downloads.asterisk.org/pub/telephony/asterisk/releases"
@@ -54,12 +60,14 @@ TARBALL="asterisk-${ASTERISK_VERSION}.tar.gz"
 OPENSSL_VERSION="3.5.9"
 OPENSSL_SHA256="603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
+OPENSSL_TARBALL="openssl-${OPENSSL_VERSION}.tar.gz"
 
 # libsrtp encrypts the audio of browser calls; the same pinned version as in
 # the Linux build, built against the OpenSSL above.
 LIBSRTP_VERSION="2.8.1"
 LIBSRTP_SHA256="ef5569220749529d778013aae1178391d972570a2b4f7288dda22effa875b07c"
 LIBSRTP_URL="https://github.com/cisco/libsrtp/archive/refs/tags/v${LIBSRTP_VERSION}.tar.gz"
+LIBSRTP_TARBALL="libsrtp-${LIBSRTP_VERSION}.tar.gz"
 
 case "$(uname -m)" in
   arm64) OPENSSL_TARGET="darwin64-arm64-cc" ;;
@@ -91,10 +99,13 @@ replace_or_fail() {
   FROM="${from}" TO="${to}" perl -0pi -e 's/\Q$ENV{FROM}\E/$ENV{TO}/g' "${file}"
 }
 
+rm -rf "${SOURCES}"
+mkdir -p "${EXTERNALS}" "${SOURCES}"
+
 echo "=== OpenSSL ${OPENSSL_VERSION} ==="
 cd "${WORK}"
-fetch_pinned "${OPENSSL_URL}" "openssl-${OPENSSL_VERSION}.tar.gz" "${OPENSSL_SHA256}"
-tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz"
+fetch_pinned "${OPENSSL_URL}" "${OPENSSL_TARBALL}" "${OPENSSL_SHA256}"
+tar -xzf "${OPENSSL_TARBALL}"
 (
   cd "openssl-${OPENSSL_VERSION}"
   ./Configure "${OPENSSL_TARGET}" shared no-tests \
@@ -105,8 +116,8 @@ tar -xzf "openssl-${OPENSSL_VERSION}.tar.gz"
 
 echo "=== libsrtp ${LIBSRTP_VERSION} (OpenSSL backend) ==="
 cd "${WORK}"
-fetch_pinned "${LIBSRTP_URL}" "libsrtp-${LIBSRTP_VERSION}.tar.gz" "${LIBSRTP_SHA256}"
-tar -xzf "libsrtp-${LIBSRTP_VERSION}.tar.gz"
+fetch_pinned "${LIBSRTP_URL}" "${LIBSRTP_TARBALL}" "${LIBSRTP_SHA256}"
+tar -xzf "${LIBSRTP_TARBALL}"
 (
   cd "libsrtp-${LIBSRTP_VERSION}"
   ./configure --prefix="${DEPS}" --enable-openssl --with-openssl-dir="${DEPS}"
@@ -123,6 +134,10 @@ curl --fail --silent --show-error --location --remote-name \
 shasum -a 256 --check "asterisk-${ASTERISK_VERSION}.sha256"
 tar -xzf "${TARBALL}"
 cd "asterisk-${ASTERISK_VERSION}"
+# The versions of pjproject and jansson this Asterisk release pins; the file
+# is written to be read by the shell.
+# shellcheck source=/dev/null
+. third-party/versions.mak
 
 echo "=== Build-file edits for current macOS ==="
 # The only changes made to the Asterisk source tree. All of them are in build
@@ -155,6 +170,13 @@ replace_or_fail main/Makefile "${PJ_TARGET_LITERAL}" 'PJ_TARGET := $(TARGET_NAME
 echo "=== Configure ==="
 # The bundled OpenSSL and libsrtp are named explicitly so that nothing is
 # picked up from Homebrew or any other location on the build machine.
+#
+# --disable-rpath: with a prefix other than /usr, configure writes the
+# library directory of the prefix into every binary it links, as LC_RPATH.
+# On a Mac where that directory exists, @rpath references would resolve to
+# the libraries found there before those of the tree. The tree locates its
+# libraries through the one search path given to the executable below; a
+# guard stops the build if any other is left in a file.
 export PKG_CONFIG_PATH="${DEPS}/lib/pkgconfig"
 ./configure \
   --prefix="${PREFIX}" \
@@ -163,6 +185,8 @@ export PKG_CONFIG_PATH="${DEPS}/lib/pkgconfig"
   --with-ssl="${DEPS}" \
   --with-crypto="${DEPS}" \
   --with-srtp="${DEPS}" \
+  --with-externals-cache="${EXTERNALS}" \
+  --disable-rpath \
   --disable-xmldoc \
   CC=clang CXX=clang++ \
   CFLAGS="-I${DEPS}/include" \
@@ -226,6 +250,16 @@ if ! make -k -j"${CPUS}" ASTCFLAGS="${ASTERISK_MACOS_CFLAGS}" \
 fi
 tail -n 5 "${WORK}/make.log"
 make install DESTDIR="${STAGE}" ASTCFLAGS="${ASTERISK_MACOS_CFLAGS}"
+
+PJPROJECT_TARBALL="pjproject-${PJPROJECT_VERSION}.tar.bz2"
+JANSSON_TARBALL="jansson-${JANSSON_VERSION}.tar.bz2"
+for tarball in "${PJPROJECT_TARBALL}" "${JANSSON_TARBALL}"; do
+  if [ ! -f "${EXTERNALS}/${tarball}" ]; then
+    echo "ERROR: the Asterisk build did not leave ${tarball} in ${EXTERNALS}" >&2
+    echo "Its source could not be recorded and shipped." >&2
+    exit 1
+  fi
+done
 
 echo "=== Assemble the tree ==="
 rm -rf "${TREE}"
@@ -307,31 +341,70 @@ if [ "${foreign}" -ne 0 ]; then
   exit 1
 fi
 
+echo "=== Guard: the only library search path is the executable's own ==="
+# otool -L above shows what a file references, not where @rpath is looked
+# up. A search path other than the one added to the executable names a
+# directory of the build machine, which dyld searches on every Mac where it
+# exists.
+search_paths=0
+while IFS= read -r file; do
+  while IFS= read -r rpath; do
+    if [ "${file}" = "${TREE}/sbin/asterisk" ] && [ "${rpath}" = "@executable_path/../lib" ]; then
+      continue
+    fi
+    echo "ERROR: ${file} carries the library search path ${rpath}" >&2
+    search_paths=1
+  done < <(otool -l "${file}" | awk '/cmd LC_RPATH/ {getline; getline; print $2}')
+done < <(macho_files)
+if [ "${search_paths}" -ne 0 ]; then
+  exit 1
+fi
+
 echo "=== Sign ==="
 macho_files | while IFS= read -r file; do
   codesign --force --sign - "${file}"
 done
 
+echo "=== Sources ==="
+# The source of everything in the tree goes out with the archives: Asterisk,
+# the pjproject and jansson it bundles, OpenSSL and libsrtp.
+cp "${WORK}/${TARBALL}" "${WORK}/${OPENSSL_TARBALL}" "${WORK}/${LIBSRTP_TARBALL}" "${SOURCES}/"
+cp "${EXTERNALS}/${PJPROJECT_TARBALL}" "${EXTERNALS}/${JANSSON_TARBALL}" "${SOURCES}/"
+
 echo "=== Licenses and build record ==="
-mkdir -p "${TREE}/LICENSES/bundled/openssl" "${TREE}/LICENSES/bundled/libsrtp"
+mkdir -p "${TREE}/LICENSES/bundled/openssl" "${TREE}/LICENSES/bundled/libsrtp" \
+  "${TREE}/LICENSES/bundled/pjproject" "${TREE}/LICENSES/bundled/jansson"
 cp COPYING "${TREE}/LICENSES/asterisk-COPYING"
 cp LICENSE "${TREE}/LICENSES/asterisk-LICENSE"
 cp "${WORK}/openssl-${OPENSSL_VERSION}/LICENSE.txt" "${TREE}/LICENSES/bundled/openssl/"
 cp "${WORK}/libsrtp-${LIBSRTP_VERSION}/LICENSE" "${TREE}/LICENSES/bundled/libsrtp/"
+cp third-party/pjproject/source/COPYING "${TREE}/LICENSES/bundled/pjproject/"
+cp third-party/jansson/source/LICENSE "${TREE}/LICENSES/bundled/jansson/"
 {
   echo "libssl, libcrypto: OpenSSL ${OPENSSL_VERSION} (Apache-2.0), built from ${OPENSSL_URL}"
   echo "libsrtp2: libsrtp ${LIBSRTP_VERSION} (BSD-3-Clause), built from ${LIBSRTP_URL}"
+  echo "libasteriskpj.dylib: pjproject ${PJPROJECT_VERSION} (GPL-2.0-or-later), bundled by Asterisk"
+  echo "asterisk: jansson ${JANSSON_VERSION} (MIT), bundled by Asterisk and linked statically"
 } > "${TREE}/LICENSES/bundled/PACKAGES.txt"
+sha256_of() {
+  shasum -a 256 "$1" | cut -d' ' -f1
+}
 {
   echo "asterisk-version: ${ASTERISK_VERSION}"
   echo "source: ${DOWNLOAD_BASE}/${TARBALL}"
-  echo "source-sha256: $(shasum -a 256 "${WORK}/${TARBALL}" | cut -d' ' -f1)"
+  echo "source-sha256: $(sha256_of "${WORK}/${TARBALL}")"
+  echo "pjproject-version: ${PJPROJECT_VERSION} (bundled by Asterisk)"
+  echo "pjproject-sha256: $(sha256_of "${EXTERNALS}/${PJPROJECT_TARBALL}")"
+  echo "jansson-version: ${JANSSON_VERSION} (bundled by Asterisk)"
+  echo "jansson-sha256: $(sha256_of "${EXTERNALS}/${JANSSON_TARBALL}")"
   echo "source-edits:"
   echo "  - Makefile, main/Makefile: -mmacosx-version-min=10.6 replaced with ${MACOSX_DEPLOYMENT_TARGET}"
   echo "  - main/Makefile: literal '${PJ_TARGET_LITERAL}' replaced with 'PJ_TARGET := \$(TARGET_NAME)'"
   echo "compiler-flags-added: ${ASTERISK_MACOS_CFLAGS}"
   echo "openssl-version: ${OPENSSL_VERSION}"
+  echo "openssl-sha256: ${OPENSSL_SHA256}"
   echo "libsrtp-version: ${LIBSRTP_VERSION} (OpenSSL backend)"
+  echo "libsrtp-sha256: ${LIBSRTP_SHA256}"
   echo "built-on: macOS $(sw_vers -productVersion)"
   echo "macos-floor: ${MACOSX_DEPLOYMENT_TARGET}"
   echo "architecture: $(uname -m)"
@@ -340,4 +413,4 @@ cp "${WORK}/libsrtp-${LIBSRTP_VERSION}/LICENSE" "${TREE}/LICENSES/bundled/libsrt
 } > "${TREE}/BUILD-INFO.txt"
 
 echo "=== Done ==="
-du -sh "${TREE}"
+du -sh "${TREE}" "${SOURCES}"

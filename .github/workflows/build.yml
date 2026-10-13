@@ -25,11 +25,15 @@ permissions:
 # steps: the same scripts run here and on a developer machine, so the recipe
 # can be changed and proven without a round trip through this workflow.
 #
-# Linux: built on AlmaLinux 9 (glibc 2.34). glibc is backward compatible only
-# upward, so the tree runs on any host with glibc 2.34 or newer, and the base
-# is supported until 2032 — the bundled libraries carry its security patches
-# as of the build day. That matters here more than for a development tool: on
-# a telephony node this binary faces the network.
+# Linux: built on AlmaLinux 9. A host needs the newest glibc symbol version
+# any file of the tree requires — BUILD-INFO.txt records it; for 22.11.0 it is
+# GLIBC_2.35, which glibc 2.35 and newer provide, and so does the glibc 2.34
+# of AlmaLinux 9. The base is supported until 2032 — the bundled libraries
+# carry its security patches as of the build day. That matters here more than
+# for a development tool: on a telephony node this binary faces the network.
+#
+# Every build also leaves the source of everything in its tree; the release
+# publishes all of it as one archive next to the binaries.
 #
 # macOS: built with the Xcode toolchain for macOS 13 and newer; OpenSSL and
 # libsrtp are built from pinned source, everything else comes from macOS.
@@ -101,6 +105,12 @@ jobs:
             asterisk-server-linux-${{ matrix.arch }}.tar.gz
             asterisk-server-linux-${{ matrix.arch }}.tar.gz.sha256
 
+      - name: Upload sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: sources-linux-${{ matrix.arch }}
+          path: out/sources/
+
   build-macos:
     strategy:
       fail-fast: false
@@ -137,6 +147,12 @@ jobs:
           path: |
             asterisk-server-darwin-${{ matrix.arch }}.tar.gz
             asterisk-server-darwin-${{ matrix.arch }}.tar.gz.sha256
+
+      - name: Upload sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: sources-darwin-${{ matrix.arch }}
+          path: out/sources/
 
   verify-macos:
     # A different machine from the one that built the tree: the directories
@@ -191,10 +207,40 @@ jobs:
       RELEASE_TAG: ${{ github.event.inputs.asterisk_version }}-r${{ github.event.inputs.revision }}
 
     steps:
-      - name: Download all artifacts
+      - name: Download the archives
         uses: actions/download-artifact@v8
         with:
+          pattern: asterisk-server-*
           merge-multiple: true
+
+      - name: Download the sources
+        uses: actions/download-artifact@v8
+        with:
+          pattern: sources-*
+          path: sources-by-build
+
+      - name: Collect the sources into one archive
+        run: |
+          set -euo pipefail
+          # The four builds share most of their sources (Asterisk, pjproject,
+          # jansson, libsrtp; the two Linux builds the same source packages).
+          # A file is taken once; the same name with different content means
+          # the builds did not use the same source, and stops the release.
+          mkdir sources
+          for file in sources-by-build/*/*; do
+            name="$(basename "${file}")"
+            if [ -e "sources/${name}" ]; then
+              if ! cmp -s "${file}" "sources/${name}"; then
+                echo "ERROR: ${name} differs between builds" >&2
+                exit 1
+              fi
+            else
+              cp "${file}" "sources/${name}"
+            fi
+          done
+          ls -l sources
+          tar -cf asterisk-server-sources.tar -C sources .
+          sha256sum asterisk-server-sources.tar > asterisk-server-sources.tar.sha256
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
@@ -204,21 +250,25 @@ jobs:
           body: |
             Relocatable Asterisk `${{ github.event.inputs.asterisk_version }}` for Linux and macOS: the server, its modules, and every shared library they need that the platform does not provide. Runs from any directory, with no root and nothing installed.
 
-            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9, Ubuntu 22.04, Ubuntu 24.04, Debian 12, Fedora. macOS: 14, 15 and 26 on Apple Silicon, 15 and 26 on Intel, each on a machine other than the one that built the tree.
+            Every archive was verified on clean hosts before this release was published: Asterisk was started from the tree and every required module (`build/required-modules*.txt`) had to be running. Linux: AlmaLinux 9 and 10, Ubuntu 22.04, 24.04 and 26.04, Debian 12 and 13, Fedora. macOS: 14, 15, 26 and 27 on Apple Silicon, 15 and 26 on Intel, each on a machine other than the one that built the tree.
 
             ## Platforms
-            - `asterisk-server-linux-amd64.tar.gz` — Linux x64, glibc 2.34+
-            - `asterisk-server-linux-arm64.tar.gz` — Linux ARM64, glibc 2.34+
+            - `asterisk-server-linux-amd64.tar.gz` — Linux x64
+            - `asterisk-server-linux-arm64.tar.gz` — Linux ARM64
             - `asterisk-server-darwin-arm64.tar.gz` — macOS 13+, Apple Silicon
             - `asterisk-server-darwin-amd64.tar.gz` — macOS 13+, Intel
 
-            Not covered: Linux with glibc older than 2.34, musl (Alpine). Asterisk does not exist for Windows; under Windows it runs inside WSL 2.
+            Linux needs a glibc that provides the symbol version named by `requires-glibc-symbol-version` in `BUILD-INFO.txt`. Not covered: musl (Alpine). Asterisk does not exist for Windows; under Windows it runs inside WSL 2.
 
             ## Source
-            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build makes two edits to build files, adds one compiler definition, and edits no C code. `BUILD-INFO.txt` inside each archive records the source checksum, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
+            Built from the release tarball https://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${{ github.event.inputs.asterisk_version }}.tar.gz by the recipe of this repository at this tag. The Linux build uses the source unmodified; the macOS build makes two edits to build files, adds two compiler flags, and edits no C code. `BUILD-INFO.txt` inside each archive records the checksum of every source, any edit, and the module list; `LICENSES/` carries the license of Asterisk and of every bundled library.
+
+            `asterisk-server-sources.tar` holds the source of everything in the four archives: the Asterisk tarball, the pjproject and jansson tarballs it bundles, libsrtp, OpenSSL (macOS), and the AlmaLinux source package of every bundled Linux system library.
 
             ## License
             GNU General Public License v2.0 — the license of Asterisk.
           files: |
             asterisk-server-linux-*
             asterisk-server-darwin-*
+            asterisk-server-sources.tar
+            asterisk-server-sources.tar.sha256

@@ -26,7 +26,9 @@ archives, each with a `.sha256` file next to it:
 - `asterisk-server-darwin-amd64.tar.gz` — macOS, Intel
 
 A release is published only after all four archives were built and passed the
-check described under [Where it has run](#where-it-has-run).
+check described under [Where it has run](#where-it-has-run). Releases built by
+the current recipe also carry `asterisk-server-sources.tar` with its
+`.sha256` (see [Source and licenses](#source-and-licenses)).
 
 ## Download and check
 
@@ -248,9 +250,17 @@ Other sources that go into an archive:
 - macOS: OpenSSL 3.5.9, from [openssl/openssl](https://github.com/openssl/openssl);
 - Linux: the bundled system libraries, from AlmaLinux 9 binary packages.
 
+Each release built by the current recipe also carries
+`asterisk-server-sources.tar`: the source of everything in its four
+archives — the tarballs above and the AlmaLinux source package of every
+bundled Linux library, each in the exact version that went into the build.
+`BUILD-INFO.txt` records the SHA-256 of every tarball. `22.11.0-r1` was
+built before this and has no sources archive.
+
 This repository is licensed under the [GNU General Public License v2.0](LICENSE).
 Asterisk is distributed under the GPL version 2; its `COPYING` and `LICENSE`
 are in `LICENSES/` of every archive. Bundled libraries keep their own
-licenses.
+licenses: `LICENSES/bundled/PACKAGES.txt` names each with its version and
+license, and its license texts are next to it.
 
 The Asterisk name and logos are trademarks owned by Sangoma US Inc.
