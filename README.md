@@ -16,8 +16,8 @@ the Asterisk project.
 
 ## Releases
 
-A release tag is `<asterisk-version>-r<revision>`, for example `22.11.0-r2`:
-Asterisk 22.11.0, revision 2 of this recipe for it. Each release has four
+A release tag is `<asterisk-version>-r<revision>`, for example `22.11.0-r3`:
+Asterisk 22.11.0, revision 3 of this recipe for it. Each release has four
 archives, each with a `.sha256` file next to it:
 
 - `asterisk-server-linux-amd64.tar.gz` — Linux, x86-64
@@ -33,7 +33,7 @@ the current recipe also carry `asterisk-server-sources.tar` with its
 ## Download and check
 
 ```sh
-TAG=22.11.0-r2
+TAG=22.11.0-r3
 ARCHIVE=asterisk-server-linux-amd64.tar.gz
 BASE="https://github.com/gabion-dev/asterisk-server/releases/download/${TAG}"
 curl -fLO "${BASE}/${ARCHIVE}"
@@ -75,8 +75,9 @@ own file —
 [`required-modules.linux.txt`](build/required-modules.linux.txt)
 (`res_timing_timerfd`) or
 [`required-modules.macos.txt`](build/required-modules.macos.txt)
-(`res_timing_pthread`) — and the modules they depend on. In `22.11.0-r2` that
-is 62 modules: the 60 listed, `res_ari_model` and `res_pjsip_pubsub`. They
+(`res_timing_pthread`) — and the modules they depend on. In `22.11.0-r2` and
+`22.11.0-r3` that is 62 modules: the 60 listed, `res_ari_model` and
+`res_pjsip_pubsub`. They
 cover ARI, WebSocket (`chan_websocket`, `res_websocket_client`), PJSIP, RTP
 with SRTP, bridging and the recording of a bridge (`chan_bridge_media`), the
 G.711 codecs, the dialplan applications Dial, Playback, Record and
@@ -108,6 +109,9 @@ family, on macOS OpenSSL, libsrtp and Asterisk's own `libasteriskpj` and
 "Ran" below means: Asterisk was started from the tree with every module of
 the tree, reported that it had fully booted, and every one of those modules
 was `Running` — the check [`build/verify.sh`](build/verify.sh) makes.
+
+For `22.11.0-r3` (14 October 2026): the same systems as for `22.11.0-r2`
+below, in the build workflow that published it.
 
 For `22.11.0-r2`:
 
