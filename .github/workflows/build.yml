@@ -231,8 +231,13 @@ jobs:
           tar -xzf "asterisk-server-darwin-${{ matrix.arch }}.tar.gz" -C tree
           bash build/verify.sh tree
 
+  # The repository's dependency audit (audit.yml): a release is published
+  # only while every release this repository pins is current or declared.
+  audit:
+    uses: ./.github/workflows/audit.yml
+
   release:
-    needs: [build-linux, verify-macos]
+    needs: [build-linux, verify-macos, audit]
     runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ github.event.inputs.asterisk_version }}-r${{ github.event.inputs.revision }}

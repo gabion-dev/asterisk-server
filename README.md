@@ -217,6 +217,13 @@ release of this repository: a new revision for the same Asterisk version, or a
 new Asterisk version. Releases are listed on the
 [releases page](https://github.com/gabion-dev/asterisk-server/releases).
 
+A release is published only when the dependency audit of this repository
+passes ([`.github/workflows/audit.yml`](.github/workflows/audit.yml), also run by hand from the Actions
+tab): libsrtp, OpenSSL and the GitHub Actions of the workflows are compared
+with their newest releases, and a version kept behind is declared in
+`gabion-audit.json` with its reason. OpenSSL stays on its long-term-support
+series, 3.5.
+
 ## Build it yourself
 
 Linux (Docker):
