@@ -1,0 +1,25 @@
+// renovate.json5
+//
+// The dependency updates of this repository come from the organisation's
+// Renovate (gabion-dev/renovate-config): the preset below carries the
+// policy — a seven-day release age, grouped and scheduled pull requests,
+// a Dependency Dashboard issue, vulnerability fixes without delay, GitHub
+// Actions pinned by digest. Only what is particular to this repository is
+// written here.
+//
+// The versions of the libraries the build scripts fetch (libsrtp, OpenSSL)
+// carry a `# renovate:` line naming their releases; Renovate proposes the
+// version, and the checksum next to it is read by hand before the pull
+// request can pass.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["local>gabion-dev/renovate-config"],
+  packageRules: [
+    {
+      description: "OpenSSL: the tree is a telephony node that faces the network for years, so it follows a long-term-support series. OpenSSL's release strategy names 3.5 the LTS series, supported until 2030-04-08, and publishes a new one every April of odd-numbered years; a major or minor is approved on the Dependency Dashboard when it is the next LTS.",
+      matchPackageNames: ["openssl/openssl"],
+      matchUpdateTypes: ["major", "minor"],
+      dependencyDashboardApproval: true,
+    },
+  ],
+}

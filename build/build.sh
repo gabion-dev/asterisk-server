@@ -46,7 +46,9 @@ TARBALL="asterisk-${ASTERISK_VERSION}.tar.gz"
 # link-time inspection sees, so the library fails to initialize on a clean
 # host. Built against OpenSSL it needs only libcrypto, which the tree
 # already carries. The version and checksum are pinned; a new libsrtp is a
-# deliberate edit of these two lines.
+# deliberate edit of these two lines — Renovate proposes the version
+# (the renovate: line names its releases), the checksum is read by hand.
+# renovate: datasource=github-releases depName=cisco/libsrtp extractVersion=^v(?<version>.*)$
 LIBSRTP_VERSION="2.8.1"
 LIBSRTP_SHA256="ef5569220749529d778013aae1178391d972570a2b4f7288dda22effa875b07c"
 LIBSRTP_URL="https://github.com/cisco/libsrtp/archive/refs/tags/v${LIBSRTP_VERSION}.tar.gz"

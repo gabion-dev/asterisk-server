@@ -56,7 +56,10 @@ DOWNLOAD_BASE="https://downloads.asterisk.org/pub/telephony/asterisk/releases"
 TARBALL="asterisk-${ASTERISK_VERSION}.tar.gz"
 
 # OpenSSL: the long-term-support line. Version and checksum are pinned; a new
-# OpenSSL is a deliberate edit of these two lines.
+# OpenSSL is a deliberate edit of these two lines — Renovate proposes the
+# version within the line (renovate.json5 holds the line), the checksum is
+# read by hand.
+# renovate: datasource=github-releases depName=openssl/openssl extractVersion=^openssl-(?<version>\d.*)$
 OPENSSL_VERSION="3.5.9"
 OPENSSL_SHA256="603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 OPENSSL_URL="https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION}/openssl-${OPENSSL_VERSION}.tar.gz"
@@ -64,6 +67,7 @@ OPENSSL_TARBALL="openssl-${OPENSSL_VERSION}.tar.gz"
 
 # libsrtp encrypts the audio of browser calls; the same pinned version as in
 # the Linux build, built against the OpenSSL above.
+# renovate: datasource=github-releases depName=cisco/libsrtp extractVersion=^v(?<version>.*)$
 LIBSRTP_VERSION="2.8.1"
 LIBSRTP_SHA256="ef5569220749529d778013aae1178391d972570a2b4f7288dda22effa875b07c"
 LIBSRTP_URL="https://github.com/cisco/libsrtp/archive/refs/tags/v${LIBSRTP_VERSION}.tar.gz"
