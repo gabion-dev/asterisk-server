@@ -268,8 +268,8 @@ Since revision `r3`, the recipe applies the patches in
 and in name order, with `patch -p1 -N`. The header of each patch says what
 it fixes and where it comes from; `BUILD-INFO.txt` lists every applied patch
 under `source-patches:` with its SHA-256. A patch that does not apply cleanly
-stops the build. For Asterisk 22.11.0 there are two, both to
-`main/audiohook.c`:
+stops the build. For Asterisk 22.11.0 there are three: two to
+`main/audiohook.c` (since `r3`) and one to `res/res_pjsip.c` (since `r4`):
 
 - `0001-audiohooks-whisper-framehook-timer-upstream-2184.patch` — the
   Asterisk project's own fix
@@ -282,6 +282,14 @@ stops the build. For Asterisk 22.11.0 there are two, both to
   audio into a channel can stop being heard after a whispering Snoop channel
   is removed and created again while another audiohook keeps the list alive.
   Not part of Asterisk as of 22.12.0-rc2.
+- `0003-res-pjsip-judge-a-tls-peer-by-its-aor-name.patch` — a dialog the far
+  end began over TLS judges the far end's certificate by the host name the
+  endpoint's AOR reaches it at, not by the address the far end's
+  `Record-Route` or `Contact` names: operators that put an IP address there
+  while their certificate carries a name could otherwise never be sent a
+  BYE with `verify_server` on. Verification itself is unchanged; an AOR
+  that names an address changes nothing. Not part of Asterisk as of
+  22.11.0.
 
 `22.11.0-r1` and `22.11.0-r2` were built from the unmodified source.
 

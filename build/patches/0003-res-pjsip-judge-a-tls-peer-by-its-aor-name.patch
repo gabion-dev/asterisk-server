@@ -1,0 +1,98 @@
+res_pjsip: Judge the TLS peer of a dialog it began by its AOR's host name
+
+Requests within a dialog the far end began are sent to the address its
+messages name. Telephone operators reached over TLS often name an IP
+address there (the Contact or Record-Route of their INVITE) while their
+certificate carries a host name. pjproject sets no initial destination for
+a dialog created from a request that arrived over an incoming connection,
+so a new TLS connection to that address is judged by the address: the
+server identity does not match the certificate, the connection is closed,
+and the BYE never leaves — the caller stays on the line. Observed on
+Asterisk 22.11.0 (pjproject 2.17) with Amazon Chime SDK Voice Connector:
+"The server identity does not match to any identities specified in the
+certificate" on every hang-up from the node's side of a call the operator
+began; with verify_server off the same BYE, to the same address, ends the
+call.
+
+When the dialog began over a secure transport and the endpoint's AOR
+reaches the peer by a host name, that name becomes the dialog's initial
+destination. pjproject carries it into every request of the dialog as the
+destination name (sip_dialog.c), keeps it when sending (sip_util.c) and
+uses it as the TLS server name and for verification (sip_transport_tls.c);
+the address is still the one the dialog names. Verification itself is
+unchanged. An AOR that names an address, or no AOR, changes nothing.
+
+Not in Asterisk as of 22.11.0; no configuration option sets the name a
+TLS peer is judged by. Written for the Gabion telephony node.
+---
+--- a/res/res_pjsip.c
++++ b/res/res_pjsip.c
+@@ -1113,6 +1113,59 @@
+ typedef pj_status_t (*create_dlg_uac)(pjsip_user_agent *ua, pjsip_rx_data *rdata,
+ 	const pj_str_t *contact, pjsip_dialog **p_dlg);
+ 
++/*!
++ * \brief Judge the peer of a dialog it began over TLS by the name it is reached at
++ *
++ * Requests within a dialog the far end began go to the address its messages
++ * name, and many operators name an IP address there while their certificate
++ * carries a host name. A new TLS connection to that address would be judged
++ * by the address, fail verification, and the request (a BYE above all)
++ * would never leave. pjproject judges a connection by the dialog's initial
++ * destination when it has one, and by the address only when it has none; a
++ * dialog the far end began over an incoming connection has none.
++ *
++ * So when the endpoint's AOR reaches the peer by a host name, that name
++ * becomes the dialog's initial destination: requests still go to the
++ * address the dialog names, and the connection there is judged by the name
++ * the configuration trusts, with the transport's usual verification. An AOR
++ * that reaches the peer by an address, or none at all, changes nothing.
++ */
++static void judge_peer_by_aor_name(const struct ast_sip_endpoint *endpoint,
++	pjsip_rx_data *rdata, pjsip_dialog *dlg)
++{
++	struct ast_sip_contact *contact;
++	pj_str_t text;
++	pjsip_uri *parsed;
++	pjsip_sip_uri *uri;
++	char host[PJ_MAX_HOSTNAME];
++
++	if (!PJSIP_TRANSPORT_IS_SECURE(rdata->tp_info.transport)
++		|| ast_strlen_zero(endpoint->aors)) {
++		return;
++	}
++	contact = ast_sip_location_retrieve_contact_from_aor_list(endpoint->aors);
++	if (!contact) {
++		return;
++	}
++	pj_strdup2_with_null(dlg->pool, &text, contact->uri);
++	ao2_ref(contact, -1);
++	parsed = pjsip_parse_uri(dlg->pool, text.ptr, text.slen, 0);
++	if (!parsed || !(PJSIP_URI_SCHEME_IS_SIP(parsed) || PJSIP_URI_SCHEME_IS_SIPS(parsed))) {
++		return;
++	}
++	uri = pjsip_uri_get_uri(parsed);
++	if (!uri->host.slen || uri->host.slen >= (pj_ssize_t) sizeof(host)) {
++		return;
++	}
++	ast_copy_pj_str(host, &uri->host, sizeof(host));
++	if (ast_sockaddr_parse(NULL, host, PARSE_PORT_FORBID)) {
++		return;
++	}
++	pj_strdup(dlg->pool, &dlg->initial_dest, &uri->host);
++	ast_debug(3, "Dialog %s of endpoint '%s' judges its peer as '%s'\n",
++		dlg->obj_name, ast_sorcery_object_get_id(endpoint), host);
++}
++
+ static pjsip_dialog *create_dialog_uas(const struct ast_sip_endpoint *endpoint,
+ 	pjsip_rx_data *rdata, pj_status_t *status, create_dlg_uac create_fun)
+ {
+@@ -1168,6 +1221,8 @@
+ 
+ 	ast_sip_tpselector_unref(&selector);
+ 
++	judge_peer_by_aor_name(endpoint, rdata, dlg);
++
+ 	return dlg;
+ }
+ 
